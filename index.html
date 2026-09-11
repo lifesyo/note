@@ -179,9 +179,10 @@ nav button.on svg{stroke-width:2.1}
 .small{font-size:12px;color:var(--ink-soft)}
 
 @media print{
-  header,nav,.addrow,.section,.btn,.hint{display:none!important}
+  header,nav,.addrow,.section,.btn,.hint,.noprint{display:none!important}
   body{padding:0;background:#fff}
-  .view{display:block!important;padding:0}
+  .view{display:none!important}
+  #v-cards{display:block!important;padding:0}
   #v-cards .bc{page-break-inside:avoid;display:inline-block;width:48%;margin:1%}
 }
 .modal{position:fixed;inset:0;z-index:200;background:rgba(26,28,34,.45);display:none;align-items:flex-end;justify-content:center}
@@ -190,6 +191,7 @@ nav button.on svg{stroke-width:2.1}
 .modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;font-weight:700;font-size:17px}
 .modal-x{background:none;border:none;font-size:26px;line-height:1;color:var(--ink-soft);cursor:pointer;font-family:inherit}
 input[type=date]{width:100%;border:1px solid var(--edge);border-radius:12px;padding:12px;font-family:inherit;font-size:15px;color:var(--ink);background:#fff}
+.noterow-del{cursor:pointer;font-size:13px;font-weight:600;opacity:.85;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -263,11 +265,13 @@ input[type=date]{width:100%;border:1px solid var(--edge);border-radius:12px;padd
 <!-- CARDS -->
 <section class="view" id="v-cards">
   <h2 class="section">選手を追加</h2>
-  <div class="addrow"><input type="text" id="newName" placeholder="名前を入力"><button class="btn primary" onclick="addPlayer()">追加</button></div>
+  <div class="addrow"><input type="text" id="newName" placeholder="名前を入力" onkeydown="if(event.key==='Enter')addPlayer()"><button class="btn primary" onclick="addPlayer()">追加</button></div>
+  <h2 class="section noprint">選手の管理</h2>
+  <div id="manageList" class="plist noprint" style="margin-bottom:8px"></div>
   <h2 class="section">バーコード（印刷用）</h2>
   <p class="hint" style="text-align:left">印刷して選手証やノート表紙に貼り、受付でスキャンします。</p>
   <div id="cardArea"></div>
-  <button class="btn soft" onclick="window.print()" style="margin-top:12px">🖨 印刷 / PDF保存</button>
+  <button class="btn soft noprint" onclick="window.print()" style="margin-top:12px">🖨 印刷 / PDF保存</button>
 </section>
 
 <!-- SETTINGS -->
@@ -578,17 +582,38 @@ function wordTrend(p){
 }
 function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 
-/* ---------- barcode cards ---------- */
+/* ---------- barcode cards + 選手管理 ---------- */
 function renderCards(){
-  $('#cardArea').innerHTML=players.map(p=>`<div class="bc"><div class="nm">${p.name}</div><svg class="bcsvg" data-code="${p.id}"></svg></div>`).join('');
+  $('#cardArea').innerHTML=players.length?players.map(p=>`<div class="bc"><div class="nm">${esc(p.name)}</div><svg class="bcsvg" data-code="${p.id}"></svg></div>`).join(''):'<div class="empty noprint">選手がいません。上から追加してください。</div>';
   document.querySelectorAll('.bcsvg').forEach(svg=>{
     try{JsBarcode(svg,svg.dataset.code,{format:'CODE128',displayValue:true,fontSize:12,height:50,margin:4});}catch(e){}
   });
+  renderManage();
+}
+function renderManage(){
+  const box=$('#manageList');if(!box)return;
+  box.innerHTML=players.length?players.map(p=>`<div class="prow">
+    <div class="avatar">${initials(p.name)}</div>
+    <div class="meta"><div class="nm">${esc(p.name)}</div><div class="last">${p.id} ・ ${p.notes.length}件の記録</div></div>
+    <span class="noterow-del" onclick="renamePlayer('${p.id}')" style="margin-right:14px;color:var(--accent-ink)">名前変更</span>
+    <span class="noterow-del" onclick="deletePlayer('${p.id}')" style="color:var(--exe)">削除</span>
+  </div>`).join(''):'<div class="empty">選手がいません。</div>';
 }
 window.addPlayer=()=>{
   const n=$('#newName').value.trim();if(!n)return;
   players.push({id:'NIQ-'+String(seq++).padStart(4,'0'),name:n,notes:[]});
   $('#newName').value='';save();renderCards();toast(n+' さんを追加しました');
+};
+window.renamePlayer=id=>{
+  const p=players.find(x=>x.id===id);if(!p)return;
+  const v=prompt('新しい名前',p.name);
+  if(v&&v.trim()){p.name=v.trim();save();renderCards();toast('名前を変更しました');}
+};
+window.deletePlayer=id=>{
+  const p=players.find(x=>x.id===id);if(!p)return;
+  if(!confirm(`${p.name} さんを削除しますか？\n${p.notes.length}件の記録もすべて消えます。この操作は元に戻せません。`))return;
+  players=players.filter(x=>x.id!==id);
+  save();renderCards();toast(`${p.name} さんを削除しました`);
 };
 window.saveTeam=()=>{const t=$('#teamName').value.trim();if(!t)return;teamName=t;$('#teamTag').textContent=t;save();toast('チーム名を保存しました');};
 
