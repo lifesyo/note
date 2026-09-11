@@ -184,11 +184,17 @@ nav button.on svg{stroke-width:2.1}
   .view{display:block!important;padding:0}
   #v-cards .bc{page-break-inside:avoid;display:inline-block;width:48%;margin:1%}
 }
+.modal{position:fixed;inset:0;z-index:200;background:rgba(26,28,34,.45);display:none;align-items:flex-end;justify-content:center}
+.modal.open{display:flex}
+.modal-inner{background:var(--paper);width:100%;max-width:640px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:18px 16px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,.15)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;font-weight:700;font-size:17px}
+.modal-x{background:none;border:none;font-size:26px;line-height:1;color:var(--ink-soft);cursor:pointer;font-family:inherit}
+input[type=date]{width:100%;border:1px solid var(--edge);border-radius:12px;padding:12px;font-family:inherit;font-size:15px;color:var(--ink);background:#fff}
 </style>
 </head>
 <body>
 
-<!-- ========== GATE (login + api key) ========== -->
+<!-- ========== GATE (login) ========== -->
 <div id="gate" class="show">
   <div class="logo"><span>Note</span> IQ</div>
   <div class="sub">紙のバスケノートを、成長の記録に。</div>
@@ -201,17 +207,6 @@ nav button.on svg{stroke-width:2.1}
     <p class="small" style="margin-top:14px;text-align:center">部の記録を安全に保存するためログインします</p>
   </div>
 
-  <div class="gcard" id="apikey-card" style="display:none">
-    <h3>APIキーを設定</h3>
-    <p>書き起こしAIを使うため、あなたのAnthropic APIキーが必要です。キーはこの端末にのみ保存され、サーバーには送られません。</p>
-    <div class="setup-steps">
-      <div><b>1.</b><span><a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> でアカウント作成</span></div>
-      <div><b>2.</b><span>API Keys から新しいキーを発行</span></div>
-      <div><b>3.</b><span>下に貼り付け（sk-ant-... で始まる文字列）</span></div>
-    </div>
-    <input type="password" id="setup-key" placeholder="sk-ant-...">
-    <button class="btn primary" onclick="saveKeyAndStart()">はじめる</button>
-  </div>
 </div>
 
 <!-- ========== HEADER ========== -->
@@ -243,56 +238,14 @@ nav button.on svg{stroke-width:2.1}
   <div id="h-pending" class="plist"></div>
 </section>
 
-<!-- RECEPTION -->
+<!-- RECEPTION（提出チェックのみ） -->
 <section class="view" id="v-recv">
-  <div class="stepbar"><div class="s" id="sb1"></div><div class="s" id="sb2"></div><div class="s" id="sb3"></div></div>
-  <div class="step" id="st1">
-    <h2 class="section">① 誰のノート？（バーコードをスキャン）</h2>
-    <div id="reader"></div>
-    <p class="hint">カメラが出ないときは選手を直接選んでください</p>
-    <div id="quickpick" class="plist"></div>
-  </div>
-  <div class="step" id="st2">
-    <div class="who" id="whoBox"></div>
-    <h2 class="section">② ノートを撮影（複数ページ可）</h2>
-    <input type="file" accept="image/*" capture="environment" id="camin" hidden multiple onchange="onPhoto(event)">
-    <div id="thumbs" class="thumbs"></div>
-    <div id="dropArea" class="drop" onclick="document.getElementById('camin').click()">
-      <div style="font-size:30px">▤</div><div><b>タップして撮影</b></div>
-      <div style="font-size:12px">見開きが入るように撮ってください</div>
-    </div>
-    <button class="btn primary" id="analyzeBtn" onclick="analyze()" style="display:none;margin-top:12px">AIで書き起こす</button>
-    <button class="btn ghost" onclick="document.getElementById('camin').click()" id="addMoreBtn" style="display:none;margin-top:8px">ページを追加</button>
-  </div>
-  <div class="step" id="st3">
-    <div class="who" id="whoBox2"></div>
-    <h2 class="section">③ 書き起こしを確認・修正</h2>
-    <div class="field">
-      <label>ノート全文（AIが読み取り・整えたもの／本人の言い回しは保持）</label>
-      <textarea id="exBody" rows="12" placeholder="ここに全文が入ります"></textarea>
-      <div class="hint" style="text-align:left;margin-top:6px">読めなかった箇所は <b>[?]</b> です。原本を見て直してください。</div>
-    </div>
-    <div class="field">
-      <label>触れていた観点（AIが自動判定・タップで切替）</label>
-      <div class="tags">
-        <span class="tag on" data-k="cog" onclick="tglTag(this)">認知</span>
-        <span class="tag on" data-k="jdg" onclick="tglTag(this)">判断</span>
-        <span class="tag on" data-k="sel" onclick="tglTag(this)">選択</span>
-        <span class="tag on" data-k="exe" onclick="tglTag(this)">実行</span>
-      </div>
-    </div>
-    <div class="field">
-      <label>キーワード</label>
-      <div class="kw" id="exKw"></div>
-      <input type="text" id="kwAdd" placeholder="追加してEnter" style="margin-top:8px" onkeydown="if(event.key==='Enter'){addKw(this.value);this.value=''}">
-    </div>
-    <div class="field">
-      <label>先生の一言（任意）</label>
-      <textarea id="exTeacher" rows="2" placeholder="この子に返したい言葉があれば"></textarea>
-    </div>
-    <button class="btn primary" onclick="saveNote()">保存する</button>
-    <button class="btn ghost" onclick="go('home')" style="margin-top:8px">やめる</button>
-  </div>
+  <h2 class="section">提出チェック（バーコードをスキャン）</h2>
+  <div id="reader"></div>
+  <p class="hint">スキャンすると今日の提出として記録します。カメラが出ないときは下から選手をタップ。</p>
+  <div id="recvDone" class="plist" style="margin-bottom:12px"></div>
+  <h2 class="section">選手をタップして提出記録</h2>
+  <div id="quickpick" class="plist"></div>
 </section>
 
 <!-- PLAYERS -->
@@ -321,11 +274,6 @@ nav button.on svg{stroke-width:2.1}
 <section class="view" id="v-settings">
   <h2 class="section">アカウント</h2>
   <div class="card pad" id="userCard" style="margin-bottom:14px"></div>
-  <h2 class="section">APIキー</h2>
-  <div class="card pad settings-row">
-    <div class="small" id="keyDisp">未設定</div>
-    <div class="krow"><input type="password" id="newKey" placeholder="sk-ant-... で更新"><button class="btn soft" onclick="updateKey()">更新</button></div>
-  </div>
   <h2 class="section">チーム名</h2>
   <div class="card pad"><div class="krow"><input type="text" id="teamName" placeholder="チーム名"><button class="btn soft" onclick="saveTeam()">保存</button></div></div>
   <h2 class="section">　</h2>
@@ -341,6 +289,41 @@ nav button.on svg{stroke-width:2.1}
   <button id="nav-cards" onclick="go('cards')"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M7 9v6M10 9v6M13 9v6M17 9v6"/></svg>発行</button>
 </nav>
 
+<!-- 記録追加モーダル -->
+<div class="modal" id="noteModal">
+  <div class="modal-inner">
+    <div class="modal-head"><span id="nmTitle">記録を追加</span><button class="modal-x" onclick="closeNoteModal()">×</button></div>
+    <div class="field">
+      <label>日付</label>
+      <input type="date" id="nmDate">
+    </div>
+    <div class="field">
+      <label>ノート全文</label>
+      <textarea id="nmBody" rows="10" placeholder="ノートの内容を入力"></textarea>
+    </div>
+    <div class="field">
+      <label>触れていた観点（タップで切替）</label>
+      <div class="tags">
+        <span class="tag on" data-k="cog" onclick="tglTag(this)">認知</span>
+        <span class="tag on" data-k="jdg" onclick="tglTag(this)">判断</span>
+        <span class="tag on" data-k="sel" onclick="tglTag(this)">選択</span>
+        <span class="tag on" data-k="exe" onclick="tglTag(this)">実行</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>キーワード</label>
+      <div class="kw" id="nmKw"></div>
+      <input type="text" id="nmKwAdd" placeholder="追加してEnter" style="margin-top:8px" onkeydown="if(event.key==='Enter'){addKw(this.value);this.value=''}">
+    </div>
+    <div class="field">
+      <label>先生の一言（任意）</label>
+      <textarea id="nmTeacher" rows="2" placeholder="この子に返したい言葉があれば"></textarea>
+    </div>
+    <button class="btn primary" onclick="saveNote()">保存する</button>
+    <button class="btn ghost" onclick="closeNoteModal()" style="margin-top:8px">やめる</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -355,13 +338,12 @@ import { getFirestore, doc, setDoc, onSnapshot }
    （新しく作った Firebase プロジェクトの「ウェブアプリ」の firebaseConfig を貼る）
    ============================================================ */
 const firebaseConfig = {
-  apiKey: "AIzaSyCs4RArGRzhAb5DIf9W_9KB-M8YXsaXqIY",
-  authDomain: "noteiq-5c55d.firebaseapp.com",
-  projectId: "noteiq-5c55d",
-  storageBucket: "noteiq-5c55d.firebasestorage.app",
-  messagingSenderId: "917960355676",
-  appId: "1:917960355676:web:4f32b1d71f3c6a0dc51b99",
-  measurementId: "G-6RG56W42T1"
+  apiKey: "PASTE_YOUR_API_KEY",
+  authDomain: "PASTE.firebaseapp.com",
+  projectId: "PASTE_PROJECT_ID",
+  storageBucket: "PASTE.appspot.com",
+  messagingSenderId: "PASTE_SENDER_ID",
+  appId: "PASTE_APP_ID"
 };
 /* ▲▲▲ 置き換えここまで ▲▲▲ */
 
@@ -370,14 +352,11 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
-const MODEL = 'claude-opus-4-6'; // 精度優先・手書き書き起こし向け
-
 /* ---------- state ---------- */
 const K={cog:'認知',jdg:'判断',sel:'選択',exe:'実行'};
 const Kcol={cog:'var(--cog)',jdg:'var(--jdg)',sel:'var(--sel)',exe:'var(--exe)'};
 let players=[];
 let teamName='東淀中学校 女子バスケ部';
-let apiKey='';
 let currentUser=null;
 let unsub=null;
 let seq=1;
@@ -398,20 +377,12 @@ window.doLogout=()=>{ if(unsub)unsub(); fbSignOut(auth); };
 onAuthStateChanged(auth,user=>{
   if(!user){ currentUser=null; showGate('login'); return; }
   currentUser=user;
-  apiKey=localStorage.getItem('noteiq_key_'+user.uid)||'';
-  if(!apiKey){ showGate('apikey'); return; }
   launch();
 });
 function showGate(which){
   $('#gate').classList.add('show');
-  $('#login-card').style.display = which==='login'?'block':'none';
-  $('#apikey-card').style.display = which==='apikey'?'block':'none';
+  $('#login-card').style.display = 'block';
 }
-window.saveKeyAndStart=()=>{
-  const k=$('#setup-key').value.trim();
-  if(!k.startsWith('sk-')){ alert('正しいAPIキーを入力してください（sk-ant-... で始まります）'); return; }
-  localStorage.setItem('noteiq_key_'+currentUser.uid,k); apiKey=k; launch();
-};
 function launch(){
   $('#gate').classList.remove('show');
   renderUser();
@@ -424,14 +395,8 @@ function renderUser(){
   $('#userCard').innerHTML=`<div style="display:flex;align-items:center;gap:12px">
     ${u.photoURL?`<div class="avatar" style="padding:0;overflow:hidden"><img src="${u.photoURL}" style="width:100%;height:100%;object-fit:cover"></div>`:`<div class="avatar">${(u.displayName||'U')[0]}</div>`}
     <div><div style="font-weight:700">${u.displayName||''}</div><div class="small">${u.email||''}</div></div></div>`;
-  $('#keyDisp').textContent=apiKey?('現在のキー: '+apiKey.slice(0,14)+'…'+apiKey.slice(-4)):'未設定';
   $('#teamName').value=teamName;
 }
-window.updateKey=()=>{
-  const k=$('#newKey').value.trim();
-  if(!k.startsWith('sk-')){toast('sk-ant-... の形式で入力');return;}
-  localStorage.setItem('noteiq_key_'+currentUser.uid,k);apiKey=k;$('#newKey').value='';renderUser();toast('キーを更新しました');
-};
 
 /* ---------- firestore ---------- */
 function subscribe(uid){
@@ -472,6 +437,7 @@ window.go=v=>{
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
   const nb=$('#nav-'+v); if(nb)nb.classList.add('on');
   window.scrollTo(0,0);
+  if(v!=='recv')stopScan();
   if(v==='home')renderHome();
   if(v==='players')renderPlayers();
   if(v==='cards')renderCards();
@@ -490,99 +456,73 @@ function renderHome(){
   $('#h-pending').innerHTML=pend.length?pend.map(p=>prow(p,true)).join(''):'<div class="empty">🎉 全員提出済み</div>';
 }
 
-/* ---------- reception ---------- */
-let scanning=null,current=null,photos=[];
-function setStep(n){[1,2,3].forEach(i=>{$('#st'+i).classList.toggle('on',i===n);$('#sb'+i).classList.toggle('on',i<=n);});}
+/* ---------- reception（提出チェックのみ） ---------- */
+let scanning=null;
 function startReception(){
-  current=null;photos=[];renderThumbs();
-  setStep(1);
-  $('#quickpick').innerHTML=players.map(p=>prow(p,false,'pick')).join('');
+  renderRecvDone();
+  $('#quickpick').innerHTML=players.length?players.map(p=>recvRow(p)).join(''):'<div class="empty">選手がいません。「発行」から追加してください。</div>';
   const box=$('#reader');box.innerHTML='';
   try{
     scanning=new Html5Qrcode("reader");
     scanning.start({facingMode:"environment"},{fps:10,qrbox:{width:240,height:120}},
-      txt=>onScan(txt),()=>{}).catch(()=>{box.innerHTML='<div class="empty" style="padding:24px">カメラが使えません。下から選手を選んでください。</div>';});
-  }catch(e){box.innerHTML='<div class="empty" style="padding:24px">下から選手を選んでください。</div>';}
+      txt=>onScan(txt),()=>{}).catch(()=>{box.innerHTML='<div class="empty" style="padding:24px">カメラが使えません。下から選手をタップしてください。</div>';});
+  }catch(e){box.innerHTML='<div class="empty" style="padding:24px">下から選手をタップしてください。</div>';}
 }
 function stopScan(){if(scanning){scanning.stop().then(()=>scanning.clear()).catch(()=>{});scanning=null;}}
-function onScan(txt){const p=players.find(x=>x.id===txt)||players.find(x=>x.name===txt);if(p){stopScan();window.pickPlayer(p.id);}}
-window.pickPlayer=id=>{
-  stopScan();current=players.find(p=>p.id===id);photos=[];renderThumbs();
-  const html=`<div class="avatar">${initials(current.name)}</div><div><div class="nm">${current.name}</div><div class="id">${current.id}</div></div>`;
-  $('#whoBox').innerHTML=html;$('#whoBox2').innerHTML=html;
-  $('#dropArea').style.display='flex';
-  setStep(2);
-};
-window.onPhoto=e=>{
-  const files=[...e.target.files];e.target.value='';
-  files.forEach(f=>{const r=new FileReader();r.onload=ev=>{photos.push(ev.target.result);renderThumbs();};r.readAsDataURL(f);});
-};
-function renderThumbs(){
-  const box=$('#thumbs');
-  box.innerHTML=photos.map((p,i)=>`<div class="t"><img src="${p}"><x onclick="delPhoto(${i})">×</x></div>`).join('');
-  const has=photos.length>0;
-  $('#analyzeBtn').style.display=has?'flex':'none';
-  $('#addMoreBtn').style.display=has?'flex':'none';
-  $('#dropArea').style.display=has?'none':'flex';
+function onScan(txt){const p=players.find(x=>x.id===txt)||players.find(x=>x.name===txt);if(p)markSubmitted(p.id);}
+function recvRow(p){
+  const done=p.notes.some(n=>n.d===today);
+  return `<div class="prow" onclick="markSubmitted('${p.id}')">
+    <div class="avatar">${initials(p.name)}</div>
+    <div class="meta"><div class="nm">${p.name}</div><div class="last">${done?'✓ 今日提出済み':'タップで提出記録'}</div></div>
+    <div class="cnt">${done?'済 ✓':'記録'}</div></div>`;
 }
-window.delPhoto=i=>{photos.splice(i,1);renderThumbs();};
-
-/* ---- 本番 AI 書き起こし（Vision / Haiku） ---- */
-let curTags=[],curKw=[];
-window.analyze=async()=>{
-  if(!photos.length)return;
-  const btn=$('#analyzeBtn');btn.disabled=true;btn.innerHTML='<span class="spin"></span> 全文を読み取り中…';
-  try{
-    const imgs=photos.map(p=>{
-      const [meta,data]=p.split(',');
-      const mt=(meta.match(/data:(.*?);/)||[])[1]||'image/jpeg';
-      return {type:'image',source:{type:'base64',media_type:mt,data}};
-    });
-    const sys=`あなたは中学生の手書きバスケットボールノートを読み取るアシスタントです。次の規則を厳守してください。
-1. 画像の手書き文字を「全文」書き起こす。省略・要約は禁止。
-2. 整えるのは誤字脱字と改行のみ。本人の言い回し・語彙・文体は絶対に変えない。書かれていない内容を足さない。
-3. 判読できない文字や語は推測で創作せず [?] と記す。
-4. あわせて、内容が「認知(相手や状況を見る/気づく)」「判断(状況から何をすべきか考える)」「選択(複数の選択肢から選ぶ)」「実行(実際の動き/技術)」のどれに触れているかを判定し、該当するものだけ挙げる。
-5. 内容を象徴するキーワードを2〜5個抽出する。
-必ず次のJSONのみを出力（前後の説明・コードブロックは不要）:
-{"body":"全文テキスト","tags":["cog"|"jdg"|"sel"|"exe"...],"keywords":["語",...]}`;
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:MODEL,max_tokens:2000,system:sys,
-        messages:[{role:'user',content:[...imgs,{type:'text',text:'このノートを規則どおり書き起こしてJSONで返してください。'}]}]})
-    });
-    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||('HTTP '+res.status));}
-    const data=await res.json();
-    let txt=(data.content||[]).map(c=>c.text||'').join('').trim();
-    txt=txt.replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
-    let out;try{out=JSON.parse(txt);}catch(_){ out={body:txt,tags:['cog','jdg','sel','exe'],keywords:[]}; }
-    $('#exBody').value=out.body||'';
-    curTags=(out.tags||[]).filter(k=>K[k]);
-    if(!curTags.length)curTags=['cog','jdg','sel','exe'];
-    document.querySelectorAll('#st3 .tag').forEach(t=>{const on=curTags.includes(t.dataset.k);t.classList.toggle('on',on);t.classList.toggle('off',!on);});
-    curKw=(out.keywords||[]).slice(0,8);renderKw();
-    $('#exTeacher').value='';
-    setStep(3);
-  }catch(err){
-    console.error(err);toast('⚠️ 書き起こし失敗: '+err.message);
-  }finally{
-    btn.disabled=false;btn.innerHTML='AIで書き起こす';
-  }
+function renderRecvDone(){
+  const done=players.filter(p=>p.notes.some(n=>n.d===today));
+  $('#recvDone').innerHTML=done.length?`<div class="banner" style="color:var(--ok);background:#e7f5ee;border-color:#bfe6cf">今日の提出済み: ${done.map(p=>p.name).join('、')}</div>`:'';
+}
+window.markSubmitted=id=>{
+  const p=players.find(x=>x.id===id);if(!p)return;
+  if(p.notes.some(n=>n.d===today)){toast(p.name+' さんは提出済みです');return;}
+  // 中身が空の「提出のみ」記録を作る（あとで詳細から追記できる）
+  p.notes.push({d:today,s:'',k:[],kw:[],t:''});
+  p.notes.sort((a,b)=>a.d<b.d?-1:1);
+  save();toast(p.name+' さんの提出を記録しました');
+  renderRecvDone();
+  $('#quickpick').innerHTML=players.map(pp=>recvRow(pp)).join('');
 };
+
+/* ---------- 記録の手入力（モーダル） ---------- */
+let curTags=[],curKw=[],editTarget=null; // editTarget={id,idx|null}
+window.openNoteModal=(id,idx)=>{
+  const p=players.find(x=>x.id===id);if(!p)return;
+  editTarget={id,idx:(idx===undefined?null:idx)};
+  const n=(idx!==undefined&&idx!==null)?p.notes[idx]:null;
+  $('#nmTitle').textContent=(n?p.name+' さんの記録を編集':p.name+' さんの記録を追加');
+  $('#nmDate').value=n?n.d:today;
+  $('#nmBody').value=n?(n.s||''):'';
+  $('#nmTeacher').value=n?(n.t||''):'';
+  curTags=n?(n.k||[]).slice():['cog','jdg','sel','exe'];
+  curKw=n?(n.kw||[]).slice():[];
+  document.querySelectorAll('#noteModal .tag').forEach(t=>{const on=curTags.includes(t.dataset.k);t.classList.toggle('on',on);t.classList.toggle('off',!on);});
+  renderKw();
+  $('#noteModal').classList.add('open');
+};
+window.closeNoteModal=()=>{$('#noteModal').classList.remove('open');editTarget=null;};
 window.tglTag=el=>{const k=el.dataset.k;
   if(curTags.includes(k)){curTags=curTags.filter(x=>x!==k);el.classList.add('off');el.classList.remove('on');}
   else{curTags.push(k);el.classList.remove('off');el.classList.add('on');}};
-function renderKw(){$('#exKw').innerHTML=curKw.map((w,i)=>`<span class="chip">${w}<x onclick="delKw(${i})">×</x></span>`).join('');}
+function renderKw(){$('#nmKw').innerHTML=curKw.map((w,i)=>`<span class="chip">${esc(w)}<x onclick="delKw(${i})">×</x></span>`).join('');}
 window.addKw=w=>{w=w.trim();if(w&&!curKw.includes(w)){curKw.push(w);renderKw();}};
 window.delKw=i=>{curKw.splice(i,1);renderKw();};
 window.saveNote=()=>{
-  if(!current)return;
-  const body=$('#exBody').value.trim();
-  if(!body){toast('本文が空です');return;}
-  current.notes.push({d:today,s:body,k:curTags.slice(),kw:curKw.slice(),t:$('#exTeacher').value.trim()});
-  current.notes.sort((a,b)=>a.d<b.d?-1:1);
-  save();toast(current.name+' さんを保存しました');go('home');
+  if(!editTarget)return;
+  const p=players.find(x=>x.id===editTarget.id);if(!p)return;
+  const rec={d:$('#nmDate').value||today,s:$('#nmBody').value.trim(),k:curTags.slice(),kw:curKw.slice(),t:$('#nmTeacher').value.trim()};
+  if(editTarget.idx===null){p.notes.push(rec);}else{p.notes[editTarget.idx]=rec;}
+  p.notes.sort((a,b)=>a.d<b.d?-1:1);
+  save();toast('保存しました');
+  const id=editTarget.id;closeNoteModal();openDetail(id);
 };
 
 /* ---------- rows / balance ---------- */
@@ -591,12 +531,11 @@ function prow(p,pending,mode){
   const last=cnt?fmt(p.notes[p.notes.length-1].d):'記録なし';
   const bal=balance(p);
   const mini=cnt?`<div class="mini">${['cog','jdg','sel','exe'].map(k=>`<i style="flex:${bal[k]||0.15};background:${Kcol[k]}"></i>`).join('')}</div>`:'';
-  const click=mode==='pick'?`pickPlayer('${p.id}')`:`openDetail('${p.id}')`;
-  return `<div class="prow" onclick="${click}">
+  return `<div class="prow" onclick="openDetail('${p.id}')">
     <div class="avatar">${initials(p.name)}</div>
     <div class="meta"><div class="nm">${p.name}</div>
       <div class="last">${pending?'今日まだ未提出':'最終: '+last+' ・ '+cnt+'件'}</div>${mini}</div>
-    ${mode==='pick'?'<div class="cnt">選ぶ ›</div>':pending?'':'<div class="cnt">'+cnt+'</div>'}</div>`;
+    ${pending?'':'<div class="cnt">'+cnt+'</div>'}</div>`;
 }
 function balance(p){const c={cog:0,jdg:0,sel:0,exe:0};let t=0;p.notes.forEach(n=>n.k.forEach(k=>{if(c[k]!=null){c[k]++;t++;}}));if(!t)return c;Object.keys(c).forEach(k=>c[k]=c[k]/t);return c;}
 
@@ -607,12 +546,13 @@ window.openDetail=id=>{
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));$('#nav-players').classList.add('on');
   if(!p.notes.length){
     $('#detailBody').innerHTML=`<div class="avatar" style="margin-bottom:10px">${initials(p.name)}</div><h2 style="margin:0">${p.name}</h2>
-      <div class="empty"><div class="ico">▤</div>まだ記録がありません。<br>受付から最初のノートを登録しましょう。</div>`;return;
+      <div class="empty"><div class="ico">▤</div>まだ記録がありません。</div>
+      <button class="btn primary" onclick="openNoteModal('${p.id}')">＋ 記録を追加</button>`;return;
   }
   const bal=balance(p),maxB=Math.max(...Object.values(bal),0.01);
   const balHtml=['cog','jdg','sel','exe'].map(k=>`<div class="bcol"><div class="track"><i style="height:${bal[k]/maxB*100}%;background:${Kcol[k]}"></i></div><div class="lb" style="color:${Kcol[k]}">${K[k]}</div><div class="vv">${Math.round(bal[k]*100)}%</div></div>`).join('');
   const wt=wordTrend(p);
-  const tl=p.notes.slice().reverse().map((n,ri)=>{const realIdx=p.notes.length-1-ri;return `<div class="tnote"><div class="dt"><span>${fmt(n.d)}</span><x onclick="delNote('${p.id}',${realIdx})">削除</x></div>
+  const tl=p.notes.slice().reverse().map((n,ri)=>{const realIdx=p.notes.length-1-ri;const empty=!n.s&&!(n.k&&n.k.length)&&!(n.kw&&n.kw.length)&&!n.t;return `<div class="tnote"><div class="dt"><span>${fmt(n.d)}${empty?'（提出のみ・内容未記入）':''}</span><span><x onclick="openNoteModal('${p.id}',${realIdx})" style="margin-right:12px">編集</x><x onclick="delNote('${p.id}',${realIdx})">削除</x></span></div>
     <div class="sm"><div class="txt">${esc(n.s)||'（本文なし）'}</div>
       <div class="tg">${n.k.map(k=>`<span class="dot" style="background:${Kcol[k]}"></span>`).join('')}${n.kw.map(w=>`<span class="wt">${esc(w)}</span>`).join('')}</div>
       ${n.t?`<div class="teacher"><b>先生:</b> ${esc(n.t)}</div>`:''}</div></div>`;}).join('');
@@ -620,6 +560,7 @@ window.openDetail=id=>{
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
       <div class="avatar">${initials(p.name)}</div>
       <div><h2 style="margin:0">${p.name}</h2><div class="small">${p.notes.length}件の記録 ・ ${p.id}</div></div></div>
+    <button class="btn primary" onclick="openNoteModal('${p.id}')" style="margin-top:10px">＋ 記録を追加</button>
     <div class="card pad" style="margin-top:12px"><h2 class="section" style="margin-top:0">観点のバランス</h2>
       <div class="balance">${balHtml}</div>
       <div class="hint" style="text-align:left;margin-top:10px">どの観点に多く触れて書いているか。実行に偏らず認知・判断が育つと成長のサイン。</div></div>
