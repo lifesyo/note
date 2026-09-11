@@ -193,7 +193,7 @@ nav button.on svg{stroke-width:2.1}
 .modal{position:fixed;inset:0;z-index:200;background:rgba(26,28,34,.45);display:none;align-items:flex-end;justify-content:center}
 .modal.open{display:flex}
 .modal-inner{background:var(--paper);width:100%;max-width:640px;max-height:calc(100vh - env(safe-area-inset-top) - 24px);overflow-y:auto;border-radius:18px 18px 0 0;padding:0 16px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,.15)}
-.modal-head{position:sticky;top:0;background:var(--paper);display:flex;align-items:center;justify-content:space-between;padding:16px 0 12px;margin-bottom:6px;font-weight:700;font-size:17px;z-index:1}
+.modal-head{position:sticky;top:0;background:var(--paper);display:flex;align-items:center;justify-content:space-between;padding:calc(16px + env(safe-area-inset-top)) 0 12px;margin-bottom:6px;font-weight:700;font-size:17px;z-index:1}
 .modal-x{background:none;border:none;font-size:26px;line-height:1;color:var(--ink-soft);cursor:pointer;font-family:inherit}
 input[type=date]{width:100%;border:1px solid var(--edge);border-radius:12px;padding:12px;font-family:inherit;font-size:15px;color:var(--ink);background:#fff}
 .noterow-del{cursor:pointer;font-size:13px;font-weight:600;opacity:.85;white-space:nowrap}
