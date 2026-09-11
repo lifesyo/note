@@ -332,7 +332,7 @@ input[type=date]{width:100%;border:1px solid var(--edge);border-radius:12px;padd
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut as fbSignOut }
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, doc, setDoc, onSnapshot }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
@@ -375,8 +375,16 @@ function initials(n){return (n||'?').slice(0,1);}
 function fmt(d){const[y,m,dd]=d.split('-');return `${+m}月${+dd}日`;}
 
 /* ---------- auth ---------- */
-window.doLogin=()=>{ signInWithPopup(auth,provider).catch(()=>signInWithRedirect(auth,provider)); };
-getRedirectResult(auth).catch(()=>{});
+window.doLogin=()=>{
+  signInWithPopup(auth,provider).catch(e=>{
+    console.error(e);
+    if(e.code==='auth/popup-blocked'){
+      alert('ポップアップがブロックされました。ブラウザの設定でこのサイトのポップアップを許可してから、もう一度お試しください。');
+    }else if(e.code!=='auth/cancelled-popup-request'&&e.code!=='auth/popup-closed-by-user'){
+      alert('ログインに失敗しました: '+(e.message||e.code));
+    }
+  });
+};
 window.doLogout=()=>{ if(unsub)unsub(); fbSignOut(auth); };
 
 onAuthStateChanged(auth,user=>{
