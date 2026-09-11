@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Note IQ</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2f6f6a">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<style>
+:root{
+  --ink:#1a1c22;--ink-soft:#5b606e;--paper:#f7f5ef;--paper-line:#dfe6ee;
+  --card:#ffffff;--edge:#e7e4db;--accent:#2f6f6a;--accent-ink:#1d4f4b;
+  --cog:#c9772f;--jdg:#3f7cc9;--sel:#7a5bb0;--exe:#c14b6a;
+  --ok:#2f8f5b;--warn:#b8892a;--err:#c14b4b;
+  --shadow:0 1px 2px rgba(26,28,34,.06),0 8px 24px rgba(26,28,34,.06);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+  color:var(--ink);background:var(--paper);line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:640px;margin:0 auto;padding:0 16px}
+
+/* ---------- login / setup gate ---------- */
+#gate{position:fixed;inset:0;z-index:100;background:var(--paper);display:none;
+  flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center}
+#gate.show{display:flex}
+#gate .logo{font-size:34px;font-weight:800;color:var(--accent-ink);letter-spacing:-.02em;margin-bottom:6px}
+#gate .logo span{color:var(--ink)}
+#gate .sub{color:var(--ink-soft);font-size:14px;margin-bottom:28px}
+.gcard{background:#fff;border:1px solid var(--edge);border-radius:16px;padding:24px;max-width:380px;width:100%;box-shadow:var(--shadow)}
+.gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;border:1px solid var(--edge);
+  background:#fff;border-radius:12px;padding:13px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;color:var(--ink)}
+.gbtn:active{transform:scale(.99)}
+.gcard h3{margin:0 0 6px;font-size:17px}
+.gcard p{margin:0 0 16px;font-size:13px;color:var(--ink-soft);text-align:left}
+.gcard input{width:100%;border:1px solid var(--edge);border-radius:12px;padding:12px;font-family:inherit;font-size:15px;margin-bottom:12px}
+.setup-steps{text-align:left;font-size:13px;color:var(--ink-soft);margin:0 0 16px;padding-left:2px}
+.setup-steps div{margin-bottom:6px;display:flex;gap:8px}
+.setup-steps b{color:var(--accent);flex-shrink:0}
+
+/* ---------- header ---------- */
+header{position:sticky;top:0;z-index:20;background:rgba(247,245,239,.86);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--edge);padding:calc(env(safe-area-inset-top) + 10px) 16px 10px}
+.brand{display:flex;align-items:center;gap:8px;max-width:640px;margin:0 auto}
+.brand h1{font-size:20px;margin:0;letter-spacing:-.01em}
+.brand .n{color:var(--accent-ink);font-weight:800}
+.brand .tag{font-size:11px;color:var(--ink-soft);margin-left:auto}
+.sync{width:8px;height:8px;border-radius:50%;background:#cfcabb;flex-shrink:0}
+.sync.syncing{background:var(--warn);animation:pulse 1s infinite}
+.sync.synced{background:var(--ok)}
+.sync.error{background:var(--err)}
+@keyframes pulse{50%{opacity:.3}}
+.top-av{width:30px;height:30px;border-radius:50%;overflow:hidden;background:var(--accent);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;cursor:pointer}
+.top-av img{width:100%;height:100%;object-fit:cover}
+
+body{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+.view{display:none;padding-top:16px}
+.view.active{display:block;animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+h2.section{font-size:13px;color:var(--ink-soft);font-weight:600;margin:20px 2px 8px}
+
+.card{background:var(--card);border:1px solid var(--edge);border-radius:14px;box-shadow:var(--shadow)}
+.card.pad{padding:16px}
+.today{background:linear-gradient(180deg,#ffffff,#fbfaf6);border:1px solid var(--edge);border-radius:16px;padding:18px;box-shadow:var(--shadow)}
+.today .row{display:flex;align-items:flex-end;gap:14px}
+.today .big{font-size:44px;font-weight:800;line-height:1;color:var(--accent-ink);letter-spacing:-.02em}
+.today .of{font-size:15px;color:var(--ink-soft);padding-bottom:4px}
+.today .sub{font-size:13px;color:var(--ink-soft);margin-top:8px}
+.bar{height:8px;background:#eceae2;border-radius:999px;overflow:hidden;margin-top:12px}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:999px;transition:width .5s}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:12px;
+  padding:14px 16px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;width:100%;transition:transform .08s,filter .2s}
+.btn:active{transform:scale(.985)}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--edge)}
+.btn.soft{background:#eef2f1;color:var(--accent-ink)}
+.btn.danger{background:#fff;color:var(--err);border:1px solid #eccaca}
+.btn:disabled{opacity:.5;cursor:default}
+
+.stepbar{display:flex;gap:6px;margin:2px 0 16px}
+.stepbar .s{flex:1;height:4px;background:#e4e1d8;border-radius:999px}
+.stepbar .s.on{background:var(--accent)}
+.step{display:none}.step.on{display:block}
+#reader{width:100%;border-radius:14px;overflow:hidden;border:1px solid var(--edge)}
+.hint{font-size:13px;color:var(--ink-soft);text-align:center;margin:10px 0}
+
+.who{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--edge);border-radius:14px;background:#fff;margin-bottom:12px}
+.avatar{width:44px;height:44px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;flex-shrink:0}
+.who .nm{font-weight:700;font-size:17px}.who .id{font-size:12px;color:var(--ink-soft)}
+
+.drop{border:2px dashed var(--paper-line);border-radius:16px;background:
+   linear-gradient(#fff,#fff) padding-box,
+   repeating-linear-gradient(180deg,transparent 0 27px,var(--paper-line) 27px 28px) content-box;
+  min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:22px;text-align:center;cursor:pointer;color:var(--ink-soft)}
+.drop b{color:var(--ink)}
+.preview{width:100%;border-radius:12px;border:1px solid var(--edge);display:block}
+.spin{width:22px;height:22px;border:3px solid #d8f0ec;border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;display:inline-block;vertical-align:middle}
+@keyframes sp{to{transform:rotate(360deg)}}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.thumbs .t{position:relative;width:72px;height:72px;border-radius:10px;overflow:hidden;border:1px solid var(--edge)}
+.thumbs .t img{width:100%;height:100%;object-fit:cover}
+.thumbs .t x{position:absolute;top:2px;right:2px;background:rgba(0,0,0,.6);color:#fff;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer}
+
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:6px;font-weight:600}
+textarea,input[type=text],input[type=password]{width:100%;border:1px solid var(--edge);border-radius:12px;padding:12px;font-family:inherit;font-size:15px;color:var(--ink);background:#fff;resize:vertical;line-height:1.6}
+textarea:focus,input:focus{outline:2px solid #d8ece9;border-color:var(--accent)}
+.tags{display:flex;flex-wrap:wrap;gap:8px}
+.tag{padding:7px 12px;border-radius:999px;font-size:13px;font-weight:600;border:1.5px solid;background:#fff;cursor:pointer;user-select:none;transition:.15s}
+.tag[data-k=cog]{color:var(--cog);border-color:var(--cog)}
+.tag[data-k=jdg]{color:var(--jdg);border-color:var(--jdg)}
+.tag[data-k=sel]{color:var(--sel);border-color:var(--sel)}
+.tag[data-k=exe]{color:var(--exe);border-color:var(--exe)}
+.tag.off{opacity:.35}
+.tag.on[data-k=cog]{background:var(--cog);color:#fff}
+.tag.on[data-k=jdg]{background:var(--jdg);color:#fff}
+.tag.on[data-k=sel]{background:var(--sel);color:#fff}
+.tag.on[data-k=exe]{background:var(--exe);color:#fff}
+.kw{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.chip{background:#eef2f1;color:var(--accent-ink);padding:5px 10px;border-radius:8px;font-size:13px;display:inline-flex;gap:6px;align-items:center}
+.chip x{cursor:pointer;font-weight:700;opacity:.6}
+
+.plist{display:flex;flex-direction:column;gap:10px}
+.prow{display:flex;align-items:center;gap:12px;padding:14px;background:#fff;border:1px solid var(--edge);border-radius:14px;box-shadow:var(--shadow);cursor:pointer}
+.prow .meta{flex:1;min-width:0}.prow .nm{font-weight:700}
+.prow .last{font-size:12px;color:var(--ink-soft)}
+.prow .cnt{font-size:12px;color:var(--accent-ink);font-weight:700;background:#eef2f1;padding:4px 9px;border-radius:999px}
+.mini{display:flex;gap:3px;margin-top:6px}.mini i{height:5px;border-radius:2px;display:block}
+
+.balance{display:flex;gap:8px;margin:6px 0 4px}
+.bcol{flex:1;text-align:center}
+.bcol .track{height:70px;background:#f0eee6;border-radius:8px;display:flex;align-items:flex-end;overflow:hidden}
+.bcol .track>i{display:block;width:100%;border-radius:8px 8px 0 0;transition:height .5s}
+.bcol .lb{font-size:11px;color:var(--ink-soft);margin-top:5px;font-weight:600}
+.bcol .vv{font-size:11px;color:var(--ink)}
+.wordtrend{display:flex;flex-wrap:wrap;gap:6px}
+.wt{padding:5px 10px;border-radius:8px;font-size:13px;background:#eef2f1;color:var(--accent-ink)}
+.wt.up{background:#e3f2ea;color:#1f6b45}.wt.up::after{content:" ↑";font-size:11px}
+.timeline{position:relative;padding-left:20px;margin-top:6px}
+.timeline::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:2px;background:var(--paper-line)}
+.tnote{position:relative;margin-bottom:14px}
+.tnote::before{content:"";position:absolute;left:-18px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--accent);border:2px solid var(--paper)}
+.tnote .dt{font-size:12px;color:var(--ink-soft);font-weight:600;display:flex;justify-content:space-between}
+.tnote .dt x{cursor:pointer;opacity:.5}
+.tnote .sm{background:#fff;border:1px solid var(--edge);border-radius:12px;padding:12px;margin-top:5px;box-shadow:var(--shadow)}
+.tnote .sm .txt{font-size:14px;white-space:pre-wrap;word-break:break-word}
+.tnote .sm .tg{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap;align-items:center}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.teacher{font-size:13px;color:var(--accent-ink);background:#eef2f1;border-radius:8px;padding:7px 10px;margin-top:8px}
+.teacher b{font-weight:700}
+
+nav{position:fixed;bottom:0;left:0;right:0;z-index:30;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);
+  border-top:1px solid var(--edge);display:flex;padding:6px 8px calc(6px + env(safe-area-inset-bottom))}
+nav button{flex:1;background:none;border:none;font-family:inherit;color:var(--ink-soft);font-size:11px;font-weight:600;
+  display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;cursor:pointer}
+nav button.on{color:var(--accent-ink)}
+nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav button.on svg{stroke-width:2.1}
+
+.empty{text-align:center;color:var(--ink-soft);padding:40px 20px;font-size:14px}
+.empty .ico{font-size:34px;margin-bottom:8px;opacity:.5}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);
+  background:var(--ink);color:#fff;padding:11px 18px;border-radius:999px;font-size:14px;font-weight:600;
+  opacity:0;pointer-events:none;transition:.25s;z-index:50;white-space:nowrap;max-width:90vw}
+.toast.show{opacity:1;transform:translate(-50%,-4px)}
+
+.bc{background:#fff;border:1px solid var(--edge);border-radius:12px;padding:12px 12px 8px;text-align:center;margin-bottom:10px}
+.bc .nm{font-weight:700;margin-bottom:4px}
+.bc svg{width:100%;max-height:70px}
+.addrow{display:flex;gap:8px;margin-bottom:14px}
+.addrow input{flex:1}.addrow button{width:auto;padding:12px 18px;white-space:nowrap}
+
+.settings-row{display:flex;flex-direction:column;gap:10px}
+.krow{display:flex;gap:8px}.krow input{flex:1}.krow button{width:auto;padding:12px 16px;white-space:nowrap}
+.small{font-size:12px;color:var(--ink-soft)}
+
+@media print{
+  header,nav,.addrow,.section,.btn,.hint{display:none!important}
+  body{padding:0;background:#fff}
+  .view{display:block!important;padding:0}
+  #v-cards .bc{page-break-inside:avoid;display:inline-block;width:48%;margin:1%}
+}
+</style>
+</head>
+<body>
+
+<!-- ========== GATE (login + api key) ========== -->
+<div id="gate" class="show">
+  <div class="logo"><span>Note</span> IQ</div>
+  <div class="sub">紙のバスケノートを、成長の記録に。</div>
+
+  <div class="gcard" id="login-card">
+    <button class="gbtn" onclick="doLogin()">
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#4285F4" d="M45 24c0-1.6-.1-3.1-.4-4.6H24v9.1h11.8c-.5 2.7-2 5-4.4 6.6v5.5h7.1C42.7 36.9 45 31 45 24z"/><path fill="#34A853" d="M24 46c5.9 0 10.9-2 14.5-5.4l-7.1-5.5c-2 1.3-4.5 2.1-7.4 2.1-5.7 0-10.5-3.8-12.2-9H4.5v5.7C8.1 41.1 15.5 46 24 46z"/><path fill="#FBBC05" d="M11.8 28.2c-.4-1.3-.7-2.7-.7-4.2s.2-2.9.7-4.2v-5.7H4.5C3 17.1 2 20.4 2 24s1 6.9 2.5 9.9l7.3-5.7z"/><path fill="#EA4335" d="M24 10.7c3.2 0 6.1 1.1 8.4 3.3l6.3-6.3C34.9 4.1 29.9 2 24 2 15.5 2 8.1 6.9 4.5 14.1l7.3 5.7c1.7-5.2 6.5-9.1 12.2-9.1z"/></svg>
+      Googleでログイン
+    </button>
+    <p class="small" style="margin-top:14px;text-align:center">部の記録を安全に保存するためログインします</p>
+  </div>
+
+  <div class="gcard" id="apikey-card" style="display:none">
+    <h3>APIキーを設定</h3>
+    <p>書き起こしAIを使うため、あなたのAnthropic APIキーが必要です。キーはこの端末にのみ保存され、サーバーには送られません。</p>
+    <div class="setup-steps">
+      <div><b>1.</b><span><a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> でアカウント作成</span></div>
+      <div><b>2.</b><span>API Keys から新しいキーを発行</span></div>
+      <div><b>3.</b><span>下に貼り付け（sk-ant-... で始まる文字列）</span></div>
+    </div>
+    <input type="password" id="setup-key" placeholder="sk-ant-...">
+    <button class="btn primary" onclick="saveKeyAndStart()">はじめる</button>
+  </div>
+</div>
+
+<!-- ========== HEADER ========== -->
+<header>
+  <div class="brand">
+    <h1><span class="n">Note</span> IQ</h1>
+    <span class="sync" id="sync"></span>
+    <span class="tag" id="teamTag">東淀中学校 女子バスケ部</span>
+    <div class="top-av" id="topAv" onclick="go('settings')"></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- HOME -->
+<section class="view active" id="v-home">
+  <div class="today">
+    <div class="row"><span class="big" id="h-done">0</span><span class="of">/ <span id="h-total">0</span> 人 提出</span></div>
+    <div class="bar"><i id="h-bar" style="width:0%"></i></div>
+    <div class="sub" id="h-date"></div>
+  </div>
+  <h2 class="section">今日やること</h2>
+  <button class="btn primary" onclick="go('recv')" style="margin-bottom:10px">▤ ノートを受け付ける</button>
+  <div style="display:flex;gap:10px">
+    <button class="btn ghost" onclick="go('players')">選手を見る</button>
+    <button class="btn ghost" onclick="go('cards')">バーコード発行</button>
+  </div>
+  <h2 class="section">未提出</h2>
+  <div id="h-pending" class="plist"></div>
+</section>
+
+<!-- RECEPTION -->
+<section class="view" id="v-recv">
+  <div class="stepbar"><div class="s" id="sb1"></div><div class="s" id="sb2"></div><div class="s" id="sb3"></div></div>
+  <div class="step" id="st1">
+    <h2 class="section">① 誰のノート？（バーコードをスキャン）</h2>
+    <div id="reader"></div>
+    <p class="hint">カメラが出ないときは選手を直接選んでください</p>
+    <div id="quickpick" class="plist"></div>
+  </div>
+  <div class="step" id="st2">
+    <div class="who" id="whoBox"></div>
+    <h2 class="section">② ノートを撮影（複数ページ可）</h2>
+    <input type="file" accept="image/*" capture="environment" id="camin" hidden multiple onchange="onPhoto(event)">
+    <div id="thumbs" class="thumbs"></div>
+    <div id="dropArea" class="drop" onclick="document.getElementById('camin').click()">
+      <div style="font-size:30px">▤</div><div><b>タップして撮影</b></div>
+      <div style="font-size:12px">見開きが入るように撮ってください</div>
+    </div>
+    <button class="btn primary" id="analyzeBtn" onclick="analyze()" style="display:none;margin-top:12px">AIで書き起こす</button>
+    <button class="btn ghost" onclick="document.getElementById('camin').click()" id="addMoreBtn" style="display:none;margin-top:8px">ページを追加</button>
+  </div>
+  <div class="step" id="st3">
+    <div class="who" id="whoBox2"></div>
+    <h2 class="section">③ 書き起こしを確認・修正</h2>
+    <div class="field">
+      <label>ノート全文（AIが読み取り・整えたもの／本人の言い回しは保持）</label>
+      <textarea id="exBody" rows="12" placeholder="ここに全文が入ります"></textarea>
+      <div class="hint" style="text-align:left;margin-top:6px">読めなかった箇所は <b>[?]</b> です。原本を見て直してください。</div>
+    </div>
+    <div class="field">
+      <label>触れていた観点（AIが自動判定・タップで切替）</label>
+      <div class="tags">
+        <span class="tag on" data-k="cog" onclick="tglTag(this)">認知</span>
+        <span class="tag on" data-k="jdg" onclick="tglTag(this)">判断</span>
+        <span class="tag on" data-k="sel" onclick="tglTag(this)">選択</span>
+        <span class="tag on" data-k="exe" onclick="tglTag(this)">実行</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>キーワード</label>
+      <div class="kw" id="exKw"></div>
+      <input type="text" id="kwAdd" placeholder="追加してEnter" style="margin-top:8px" onkeydown="if(event.key==='Enter'){addKw(this.value);this.value=''}">
+    </div>
+    <div class="field">
+      <label>先生の一言（任意）</label>
+      <textarea id="exTeacher" rows="2" placeholder="この子に返したい言葉があれば"></textarea>
+    </div>
+    <button class="btn primary" onclick="saveNote()">保存する</button>
+    <button class="btn ghost" onclick="go('home')" style="margin-top:8px">やめる</button>
+  </div>
+</section>
+
+<!-- PLAYERS -->
+<section class="view" id="v-players">
+  <h2 class="section">選手一覧</h2>
+  <div id="playerList" class="plist"></div>
+</section>
+
+<!-- DETAIL -->
+<section class="view" id="v-detail">
+  <button class="btn ghost" onclick="go('players')" style="width:auto;padding:8px 14px;margin-bottom:14px">‹ 戻る</button>
+  <div id="detailBody"></div>
+</section>
+
+<!-- CARDS -->
+<section class="view" id="v-cards">
+  <h2 class="section">選手を追加</h2>
+  <div class="addrow"><input type="text" id="newName" placeholder="名前を入力"><button class="btn primary" onclick="addPlayer()">追加</button></div>
+  <h2 class="section">バーコード（印刷用）</h2>
+  <p class="hint" style="text-align:left">印刷して選手証やノート表紙に貼り、受付でスキャンします。</p>
+  <div id="cardArea"></div>
+  <button class="btn soft" onclick="window.print()" style="margin-top:12px">🖨 印刷 / PDF保存</button>
+</section>
+
+<!-- SETTINGS -->
+<section class="view" id="v-settings">
+  <h2 class="section">アカウント</h2>
+  <div class="card pad" id="userCard" style="margin-bottom:14px"></div>
+  <h2 class="section">APIキー</h2>
+  <div class="card pad settings-row">
+    <div class="small" id="keyDisp">未設定</div>
+    <div class="krow"><input type="password" id="newKey" placeholder="sk-ant-... で更新"><button class="btn soft" onclick="updateKey()">更新</button></div>
+  </div>
+  <h2 class="section">チーム名</h2>
+  <div class="card pad"><div class="krow"><input type="text" id="teamName" placeholder="チーム名"><button class="btn soft" onclick="saveTeam()">保存</button></div></div>
+  <h2 class="section">　</h2>
+  <button class="btn danger" onclick="doLogout()">ログアウト</button>
+</section>
+
+</div>
+
+<nav>
+  <button class="on" id="nav-home" onclick="go('home')"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>ホーム</button>
+  <button id="nav-recv" onclick="go('recv')"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>受付</button>
+  <button id="nav-players" onclick="go('players')"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M4 20c0-3 2.5-5 5-5s5 2 5 5"/><circle cx="17" cy="9" r="2.2"/><path d="M15.5 20c0-2 1-3.5 2.5-4"/></svg>選手</button>
+  <button id="nav-cards" onclick="go('cards')"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M7 9v6M10 9v6M13 9v6M17 9v6"/></svg>発行</button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut as fbSignOut }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getFirestore, doc, setDoc, onSnapshot }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+/* ============================================================
+   ▼▼▼ ここを Note IQ 専用の Firebase 設定に置き換えてください ▼▼▼
+   （新しく作った Firebase プロジェクトの「ウェブアプリ」の firebaseConfig を貼る）
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "PASTE_YOUR_API_KEY",
+  authDomain: "PASTE.firebaseapp.com",
+  projectId: "PASTE_PROJECT_ID",
+  storageBucket: "PASTE.appspot.com",
+  messagingSenderId: "PASTE_SENDER_ID",
+  appId: "PASTE_APP_ID"
+};
+/* ▲▲▲ 置き換えここまで ▲▲▲ */
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const provider = new GoogleAuthProvider();
+
+const MODEL = 'claude-opus-4-6'; // 精度優先・手書き書き起こし向け
+
+/* ---------- state ---------- */
+const K={cog:'認知',jdg:'判断',sel:'選択',exe:'実行'};
+const Kcol={cog:'var(--cog)',jdg:'var(--jdg)',sel:'var(--sel)',exe:'var(--exe)'};
+let players=[];
+let teamName='東淀中学校 女子バスケ部';
+let apiKey='';
+let currentUser=null;
+let unsub=null;
+let seq=1;
+const $=s=>document.querySelector(s);
+const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+const today=todayStr();
+
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800);}
+function setSync(s){const el=$('#sync');el.className='sync '+s;}
+function initials(n){return (n||'?').slice(0,1);}
+function fmt(d){const[y,m,dd]=d.split('-');return `${+m}月${+dd}日`;}
+
+/* ---------- auth ---------- */
+window.doLogin=()=>{ signInWithPopup(auth,provider).catch(()=>signInWithRedirect(auth,provider)); };
+getRedirectResult(auth).catch(()=>{});
+window.doLogout=()=>{ if(unsub)unsub(); fbSignOut(auth); };
+
+onAuthStateChanged(auth,user=>{
+  if(!user){ currentUser=null; showGate('login'); return; }
+  currentUser=user;
+  apiKey=localStorage.getItem('noteiq_key_'+user.uid)||'';
+  if(!apiKey){ showGate('apikey'); return; }
+  launch();
+});
+function showGate(which){
+  $('#gate').classList.add('show');
+  $('#login-card').style.display = which==='login'?'block':'none';
+  $('#apikey-card').style.display = which==='apikey'?'block':'none';
+}
+window.saveKeyAndStart=()=>{
+  const k=$('#setup-key').value.trim();
+  if(!k.startsWith('sk-')){ alert('正しいAPIキーを入力してください（sk-ant-... で始まります）'); return; }
+  localStorage.setItem('noteiq_key_'+currentUser.uid,k); apiKey=k; launch();
+};
+function launch(){
+  $('#gate').classList.remove('show');
+  renderUser();
+  subscribe(currentUser.uid);
+}
+function renderUser(){
+  const u=currentUser;
+  const av=$('#topAv');
+  if(u.photoURL)av.innerHTML=`<img src="${u.photoURL}">`; else av.textContent=(u.displayName||'U')[0];
+  $('#userCard').innerHTML=`<div style="display:flex;align-items:center;gap:12px">
+    ${u.photoURL?`<div class="avatar" style="padding:0;overflow:hidden"><img src="${u.photoURL}" style="width:100%;height:100%;object-fit:cover"></div>`:`<div class="avatar">${(u.displayName||'U')[0]}</div>`}
+    <div><div style="font-weight:700">${u.displayName||''}</div><div class="small">${u.email||''}</div></div></div>`;
+  $('#keyDisp').textContent=apiKey?('現在のキー: '+apiKey.slice(0,14)+'…'+apiKey.slice(-4)):'未設定';
+  $('#teamName').value=teamName;
+}
+window.updateKey=()=>{
+  const k=$('#newKey').value.trim();
+  if(!k.startsWith('sk-')){toast('sk-ant-... の形式で入力');return;}
+  localStorage.setItem('noteiq_key_'+currentUser.uid,k);apiKey=k;$('#newKey').value='';renderUser();toast('キーを更新しました');
+};
+
+/* ---------- firestore ---------- */
+function subscribe(uid){
+  setSync('syncing');
+  unsub=onSnapshot(doc(db,'noteiq',uid),snap=>{
+    if(snap.exists()){
+      const d=snap.data();
+      if(Array.isArray(d.players))players=d.players;
+      if(d.teamName)teamName=d.teamName;
+      if(d.seq)seq=d.seq;
+      $('#teamTag').textContent=teamName;
+    }
+    if(!players.length)seedIfEmpty();
+    setSync('synced');
+    renderHome();
+  },err=>{console.error(err);setSync('error');toast('⚠️ 同期エラー');});
+}
+async function save(){
+  if(!currentUser)return;
+  setSync('syncing');
+  try{
+    await setDoc(doc(db,'noteiq',currentUser.uid),{players,teamName,seq,updatedAt:new Date().toISOString()});
+    setSync('synced');
+  }catch(e){console.error(e);setSync('error');toast('⚠️ 保存に失敗しました');}
+}
+function seedIfEmpty(){
+  // 初回のみ、既存の部員名で空の選手を作る（記録は空）
+  if(players.length)return;
+  ['あみる','ひなか','ひなた','ここな','りな','ゆり'].forEach(n=>{
+    players.push({id:'NIQ-'+String(seq++).padStart(4,'0'),name:n,notes:[]});
+  });
+}
+
+/* ---------- nav ---------- */
+window.go=v=>{
+  document.querySelectorAll('.view').forEach(e=>e.classList.remove('active'));
+  $('#v-'+v).classList.add('active');
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));
+  const nb=$('#nav-'+v); if(nb)nb.classList.add('on');
+  window.scrollTo(0,0);
+  if(v==='home')renderHome();
+  if(v==='players')renderPlayers();
+  if(v==='cards')renderCards();
+  if(v==='recv')startReception();
+  if(v==='settings')renderUser();
+};
+
+/* ---------- home ---------- */
+function renderHome(){
+  const done=players.filter(p=>p.notes.some(n=>n.d===today)).length;
+  const total=players.length;
+  $('#h-done').textContent=done;$('#h-total').textContent=total;
+  $('#h-bar').style.width=(total?done/total*100:0)+'%';
+  $('#h-date').textContent=fmt(today)+'の提出状況';
+  const pend=players.filter(p=>!p.notes.some(n=>n.d===today));
+  $('#h-pending').innerHTML=pend.length?pend.map(p=>prow(p,true)).join(''):'<div class="empty">🎉 全員提出済み</div>';
+}
+
+/* ---------- reception ---------- */
+let scanning=null,current=null,photos=[];
+function setStep(n){[1,2,3].forEach(i=>{$('#st'+i).classList.toggle('on',i===n);$('#sb'+i).classList.toggle('on',i<=n);});}
+function startReception(){
+  current=null;photos=[];renderThumbs();
+  setStep(1);
+  $('#quickpick').innerHTML=players.map(p=>prow(p,false,'pick')).join('');
+  const box=$('#reader');box.innerHTML='';
+  try{
+    scanning=new Html5Qrcode("reader");
+    scanning.start({facingMode:"environment"},{fps:10,qrbox:{width:240,height:120}},
+      txt=>onScan(txt),()=>{}).catch(()=>{box.innerHTML='<div class="empty" style="padding:24px">カメラが使えません。下から選手を選んでください。</div>';});
+  }catch(e){box.innerHTML='<div class="empty" style="padding:24px">下から選手を選んでください。</div>';}
+}
+function stopScan(){if(scanning){scanning.stop().then(()=>scanning.clear()).catch(()=>{});scanning=null;}}
+function onScan(txt){const p=players.find(x=>x.id===txt)||players.find(x=>x.name===txt);if(p){stopScan();window.pickPlayer(p.id);}}
+window.pickPlayer=id=>{
+  stopScan();current=players.find(p=>p.id===id);photos=[];renderThumbs();
+  const html=`<div class="avatar">${initials(current.name)}</div><div><div class="nm">${current.name}</div><div class="id">${current.id}</div></div>`;
+  $('#whoBox').innerHTML=html;$('#whoBox2').innerHTML=html;
+  $('#dropArea').style.display='flex';
+  setStep(2);
+};
+window.onPhoto=e=>{
+  const files=[...e.target.files];e.target.value='';
+  files.forEach(f=>{const r=new FileReader();r.onload=ev=>{photos.push(ev.target.result);renderThumbs();};r.readAsDataURL(f);});
+};
+function renderThumbs(){
+  const box=$('#thumbs');
+  box.innerHTML=photos.map((p,i)=>`<div class="t"><img src="${p}"><x onclick="delPhoto(${i})">×</x></div>`).join('');
+  const has=photos.length>0;
+  $('#analyzeBtn').style.display=has?'flex':'none';
+  $('#addMoreBtn').style.display=has?'flex':'none';
+  $('#dropArea').style.display=has?'none':'flex';
+}
+window.delPhoto=i=>{photos.splice(i,1);renderThumbs();};
+
+/* ---- 本番 AI 書き起こし（Vision / Haiku） ---- */
+let curTags=[],curKw=[];
+window.analyze=async()=>{
+  if(!photos.length)return;
+  const btn=$('#analyzeBtn');btn.disabled=true;btn.innerHTML='<span class="spin"></span> 全文を読み取り中…';
+  try{
+    const imgs=photos.map(p=>{
+      const [meta,data]=p.split(',');
+      const mt=(meta.match(/data:(.*?);/)||[])[1]||'image/jpeg';
+      return {type:'image',source:{type:'base64',media_type:mt,data}};
+    });
+    const sys=`あなたは中学生の手書きバスケットボールノートを読み取るアシスタントです。次の規則を厳守してください。
+1. 画像の手書き文字を「全文」書き起こす。省略・要約は禁止。
+2. 整えるのは誤字脱字と改行のみ。本人の言い回し・語彙・文体は絶対に変えない。書かれていない内容を足さない。
+3. 判読できない文字や語は推測で創作せず [?] と記す。
+4. あわせて、内容が「認知(相手や状況を見る/気づく)」「判断(状況から何をすべきか考える)」「選択(複数の選択肢から選ぶ)」「実行(実際の動き/技術)」のどれに触れているかを判定し、該当するものだけ挙げる。
+5. 内容を象徴するキーワードを2〜5個抽出する。
+必ず次のJSONのみを出力（前後の説明・コードブロックは不要）:
+{"body":"全文テキスト","tags":["cog"|"jdg"|"sel"|"exe"...],"keywords":["語",...]}`;
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:MODEL,max_tokens:2000,system:sys,
+        messages:[{role:'user',content:[...imgs,{type:'text',text:'このノートを規則どおり書き起こしてJSONで返してください。'}]}]})
+    });
+    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||('HTTP '+res.status));}
+    const data=await res.json();
+    let txt=(data.content||[]).map(c=>c.text||'').join('').trim();
+    txt=txt.replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+    let out;try{out=JSON.parse(txt);}catch(_){ out={body:txt,tags:['cog','jdg','sel','exe'],keywords:[]}; }
+    $('#exBody').value=out.body||'';
+    curTags=(out.tags||[]).filter(k=>K[k]);
+    if(!curTags.length)curTags=['cog','jdg','sel','exe'];
+    document.querySelectorAll('#st3 .tag').forEach(t=>{const on=curTags.includes(t.dataset.k);t.classList.toggle('on',on);t.classList.toggle('off',!on);});
+    curKw=(out.keywords||[]).slice(0,8);renderKw();
+    $('#exTeacher').value='';
+    setStep(3);
+  }catch(err){
+    console.error(err);toast('⚠️ 書き起こし失敗: '+err.message);
+  }finally{
+    btn.disabled=false;btn.innerHTML='AIで書き起こす';
+  }
+};
+window.tglTag=el=>{const k=el.dataset.k;
+  if(curTags.includes(k)){curTags=curTags.filter(x=>x!==k);el.classList.add('off');el.classList.remove('on');}
+  else{curTags.push(k);el.classList.remove('off');el.classList.add('on');}};
+function renderKw(){$('#exKw').innerHTML=curKw.map((w,i)=>`<span class="chip">${w}<x onclick="delKw(${i})">×</x></span>`).join('');}
+window.addKw=w=>{w=w.trim();if(w&&!curKw.includes(w)){curKw.push(w);renderKw();}};
+window.delKw=i=>{curKw.splice(i,1);renderKw();};
+window.saveNote=()=>{
+  if(!current)return;
+  const body=$('#exBody').value.trim();
+  if(!body){toast('本文が空です');return;}
+  current.notes.push({d:today,s:body,k:curTags.slice(),kw:curKw.slice(),t:$('#exTeacher').value.trim()});
+  current.notes.sort((a,b)=>a.d<b.d?-1:1);
+  save();toast(current.name+' さんを保存しました');go('home');
+};
+
+/* ---------- rows / balance ---------- */
+function prow(p,pending,mode){
+  const cnt=p.notes.length;
+  const last=cnt?fmt(p.notes[p.notes.length-1].d):'記録なし';
+  const bal=balance(p);
+  const mini=cnt?`<div class="mini">${['cog','jdg','sel','exe'].map(k=>`<i style="flex:${bal[k]||0.15};background:${Kcol[k]}"></i>`).join('')}</div>`:'';
+  const click=mode==='pick'?`pickPlayer('${p.id}')`:`openDetail('${p.id}')`;
+  return `<div class="prow" onclick="${click}">
+    <div class="avatar">${initials(p.name)}</div>
+    <div class="meta"><div class="nm">${p.name}</div>
+      <div class="last">${pending?'今日まだ未提出':'最終: '+last+' ・ '+cnt+'件'}</div>${mini}</div>
+    ${mode==='pick'?'<div class="cnt">選ぶ ›</div>':pending?'':'<div class="cnt">'+cnt+'</div>'}</div>`;
+}
+function balance(p){const c={cog:0,jdg:0,sel:0,exe:0};let t=0;p.notes.forEach(n=>n.k.forEach(k=>{if(c[k]!=null){c[k]++;t++;}}));if(!t)return c;Object.keys(c).forEach(k=>c[k]=c[k]/t);return c;}
+
+/* ---------- players / detail ---------- */
+function renderPlayers(){$('#playerList').innerHTML=players.map(p=>prow(p,false)).join('');}
+window.openDetail=id=>{
+  const p=players.find(x=>x.id===id);go('detail');
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));$('#nav-players').classList.add('on');
+  if(!p.notes.length){
+    $('#detailBody').innerHTML=`<div class="avatar" style="margin-bottom:10px">${initials(p.name)}</div><h2 style="margin:0">${p.name}</h2>
+      <div class="empty"><div class="ico">▤</div>まだ記録がありません。<br>受付から最初のノートを登録しましょう。</div>`;return;
+  }
+  const bal=balance(p),maxB=Math.max(...Object.values(bal),0.01);
+  const balHtml=['cog','jdg','sel','exe'].map(k=>`<div class="bcol"><div class="track"><i style="height:${bal[k]/maxB*100}%;background:${Kcol[k]}"></i></div><div class="lb" style="color:${Kcol[k]}">${K[k]}</div><div class="vv">${Math.round(bal[k]*100)}%</div></div>`).join('');
+  const wt=wordTrend(p);
+  const tl=p.notes.slice().reverse().map((n,ri)=>{const realIdx=p.notes.length-1-ri;return `<div class="tnote"><div class="dt"><span>${fmt(n.d)}</span><x onclick="delNote('${p.id}',${realIdx})">削除</x></div>
+    <div class="sm"><div class="txt">${esc(n.s)||'（本文なし）'}</div>
+      <div class="tg">${n.k.map(k=>`<span class="dot" style="background:${Kcol[k]}"></span>`).join('')}${n.kw.map(w=>`<span class="wt">${esc(w)}</span>`).join('')}</div>
+      ${n.t?`<div class="teacher"><b>先生:</b> ${esc(n.t)}</div>`:''}</div></div>`;}).join('');
+  $('#detailBody').innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+      <div class="avatar">${initials(p.name)}</div>
+      <div><h2 style="margin:0">${p.name}</h2><div class="small">${p.notes.length}件の記録 ・ ${p.id}</div></div></div>
+    <div class="card pad" style="margin-top:12px"><h2 class="section" style="margin-top:0">観点のバランス</h2>
+      <div class="balance">${balHtml}</div>
+      <div class="hint" style="text-align:left;margin-top:10px">どの観点に多く触れて書いているか。実行に偏らず認知・判断が育つと成長のサイン。</div></div>
+    ${wt.length?`<div class="card pad" style="margin-top:12px"><h2 class="section" style="margin-top:0">よく出る言葉</h2>
+      <div class="wordtrend">${wt.map(w=>`<span class="wt ${w.up?'up':''}">${esc(w.w)}</span>`).join('')}</div>
+      <div class="hint" style="text-align:left;margin-top:8px">↑ は最近増えてきた言葉。関心の変化が見えます。</div></div>`:''}
+    <h2 class="section">記録の流れ</h2><div class="timeline">${tl}</div>`;
+};
+window.delNote=(id,idx)=>{if(!confirm('この記録を削除しますか？'))return;const p=players.find(x=>x.id===id);p.notes.splice(idx,1);save();openDetail(id);};
+function wordTrend(p){
+  const half=Math.ceil(p.notes.length/2),early={},late={},all={};
+  p.notes.forEach((n,i)=>{const bag=i<half?early:late;(n.kw||[]).forEach(w=>{bag[w]=(bag[w]||0)+1;all[w]=(all[w]||0)+1;});});
+  return Object.keys(all).sort((a,b)=>all[b]-all[a]).slice(0,6).map(w=>({w,up:(late[w]||0)>(early[w]||0)}));
+}
+function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+/* ---------- barcode cards ---------- */
+function renderCards(){
+  $('#cardArea').innerHTML=players.map(p=>`<div class="bc"><div class="nm">${p.name}</div><svg class="bcsvg" data-code="${p.id}"></svg></div>`).join('');
+  document.querySelectorAll('.bcsvg').forEach(svg=>{
+    try{JsBarcode(svg,svg.dataset.code,{format:'CODE128',displayValue:true,fontSize:12,height:50,margin:4});}catch(e){}
+  });
+}
+window.addPlayer=()=>{
+  const n=$('#newName').value.trim();if(!n)return;
+  players.push({id:'NIQ-'+String(seq++).padStart(4,'0'),name:n,notes:[]});
+  $('#newName').value='';save();renderCards();toast(n+' さんを追加しました');
+};
+window.saveTeam=()=>{const t=$('#teamName').value.trim();if(!t)return;teamName=t;$('#teamTag').textContent=t;save();toast('チーム名を保存しました');};
+
+window.addEventListener('pagehide',stopScan);
+</script>
+</body>
+</html>
