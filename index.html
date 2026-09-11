@@ -409,12 +409,15 @@ function subscribe(uid){
   unsub=onSnapshot(doc(db,'noteiq',uid),snap=>{
     if(snap.exists()){
       const d=snap.data();
-      if(Array.isArray(d.players))players=d.players;
+      players=Array.isArray(d.players)?d.players:[];
       if(d.teamName)teamName=d.teamName;
       if(d.seq)seq=d.seq;
       $('#teamTag').textContent=teamName;
+    }else{
+      // ドキュメントが一度も作られていない＝本当の初回だけ初期メンバーを入れる
+      seedInitial();
+      save();
     }
-    if(!players.length)seedIfEmpty();
     setSync('synced');
     renderHome();
   },err=>{console.error(err);setSync('error');toast('⚠️ 同期エラー');});
@@ -427,9 +430,7 @@ async function save(){
     setSync('synced');
   }catch(e){console.error(e);setSync('error');toast('⚠️ 保存に失敗しました');}
 }
-function seedIfEmpty(){
-  // 初回のみ、既存の部員名で空の選手を作る（記録は空）
-  if(players.length)return;
+function seedInitial(){
   ['あみる','ひなか','ひなた','ここな','りな','ゆり'].forEach(n=>{
     players.push({id:'NIQ-'+String(seq++).padStart(4,'0'),name:n,notes:[]});
   });
