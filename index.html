@@ -192,11 +192,12 @@ nav button.on svg{stroke-width:2.1}
 }
 .modal{position:fixed;inset:0;z-index:200;background:rgba(26,28,34,.45);display:none;align-items:flex-end;justify-content:center}
 .modal.open{display:flex}
-.modal-inner{background:var(--paper);width:100%;max-width:640px;max-height:calc(100vh - env(safe-area-inset-top) - 24px);overflow-y:auto;border-radius:18px 18px 0 0;padding:0 16px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,.15)}
+.modal-inner{background:var(--paper);width:100%;max-width:640px;max-height:calc(100vh - env(safe-area-inset-top) - 24px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;border-radius:18px 18px 0 0;padding:0 16px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,.15)}
 .modal-head{position:sticky;top:0;background:var(--paper);display:flex;align-items:center;justify-content:space-between;padding:calc(16px + env(safe-area-inset-top)) 0 12px;margin-bottom:6px;font-weight:700;font-size:17px;z-index:1}
 .modal-x{background:none;border:none;font-size:26px;line-height:1;color:var(--ink-soft);cursor:pointer;font-family:inherit}
 input[type=date]{width:100%;border:1px solid var(--edge);border-radius:12px;padding:12px;font-family:inherit;font-size:15px;color:var(--ink);background:#fff}
 .noterow-del{cursor:pointer;font-size:13px;font-weight:600;opacity:.85;white-space:nowrap}
+body.modal-lock{overflow:hidden;position:fixed;width:100%}
 </style>
 </head>
 <body>
@@ -526,8 +527,10 @@ window.openNoteModal=(id,idx)=>{
   document.querySelectorAll('#noteModal .tag').forEach(t=>{const on=curTags.includes(t.dataset.k);t.classList.toggle('on',on);t.classList.toggle('off',!on);});
   renderKw();
   $('#noteModal').classList.add('open');
+  document.body.classList.add('modal-lock');
+  $('.modal-inner').scrollTop=0;
 };
-window.closeNoteModal=()=>{$('#noteModal').classList.remove('open');editTarget=null;};
+window.closeNoteModal=()=>{$('#noteModal').classList.remove('open');document.body.classList.remove('modal-lock');editTarget=null;};
 window.tglTag=el=>{const k=el.dataset.k;
   if(curTags.includes(k)){curTags=curTags.filter(x=>x!==k);el.classList.add('off');el.classList.remove('on');}
   else{curTags.push(k);el.classList.remove('off');el.classList.add('on');}};
