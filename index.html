@@ -214,6 +214,16 @@ nav button.on svg{stroke-width:2.2}
 .modal-x{background:none;border:none;font-size:26px;line-height:1;color:var(--ink-soft);cursor:pointer;font-family:inherit}
 .noterow-del{cursor:pointer;font-size:13px;font-weight:600;opacity:.85;white-space:nowrap}
 body.modal-lock{overflow:hidden;position:fixed;width:100%}
+table.attend{border-collapse:collapse;font-size:14px;min-width:100%}
+table.attend th,table.attend td{padding:9px 6px;text-align:center;border-bottom:1px solid var(--edge-soft);white-space:nowrap}
+table.attend th{font-size:11.5px;color:var(--ink-soft);font-weight:600;position:sticky;top:0;background:var(--paper)}
+table.attend .anm{text-align:left;font-weight:600;position:sticky;left:0;background:var(--paper);padding-left:2px;min-width:72px}
+table.attend th.anm{z-index:2}
+table.attend .art{color:var(--accent-ink);font-variant-numeric:tabular-nums}
+table.attend .art b{font-size:15px}
+table.attend .art span{font-size:10px;color:var(--ink-faint)}
+.amark{display:inline-block;min-width:24px;font-size:16px;font-weight:700;cursor:pointer;line-height:1;padding:4px;border-radius:6px}
+.amark:active{background:var(--paper-2)}
 </style>
 </head>
 <body>
@@ -264,12 +274,23 @@ body.modal-lock{overflow:hidden;position:fixed;width:100%}
 
 <!-- RECEPTION（提出チェックのみ） -->
 <section class="view" id="v-recv">
+  <div class="field" style="margin-bottom:14px">
+    <label>提出日（過去日も選べます）</label>
+    <input type="date" id="recvDate" onchange="onRecvDateChange()">
+  </div>
   <h2 class="section">提出チェック（バーコードをスキャン）</h2>
   <div id="reader"></div>
-  <p class="hint">スキャンすると今日の提出として記録します。カメラが出ないときは下から選手をタップ。</p>
+  <p class="hint">スキャンすると選択中の日付の提出として記録します。カメラが出ないときは下から選手をタップ。</p>
   <div id="recvDone" class="plist" style="margin-bottom:12px"></div>
   <h2 class="section">選手をタップして提出記録</h2>
   <div id="quickpick" class="plist"></div>
+</section>
+
+<!-- ATTENDANCE（提出一覧） -->
+<section class="view" id="v-attend">
+  <h2 class="section">提出一覧</h2>
+  <p class="hint" style="text-align:left">○=その日に提出 / △=遅れて提出 / ×=未提出。セルをタップで修正できます。</p>
+  <div id="attendWrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch"></div>
 </section>
 
 <!-- PLAYERS -->
@@ -293,7 +314,7 @@ body.modal-lock{overflow:hidden;position:fixed;width:100%}
   <h2 class="section">バーコード（印刷用）</h2>
   <p class="hint" style="text-align:left">印刷して選手証やノート表紙に貼り、受付でスキャンします。</p>
   <div id="cardArea"></div>
-  <button class="btn soft noprint" onclick="window.print()" style="margin-top:12px">🖨 印刷 / PDF保存</button>
+  <button class="btn soft noprint" onclick="doPrint()" style="margin-top:12px">🖨 印刷 / PDF保存</button>
 </section>
 
 <!-- SETTINGS -->
@@ -311,6 +332,7 @@ body.modal-lock{overflow:hidden;position:fixed;width:100%}
 <nav>
   <button class="on" id="nav-home" onclick="go('home')"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>ホーム</button>
   <button id="nav-recv" onclick="go('recv')"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>受付</button>
+  <button id="nav-attend" onclick="go('attend')"><svg viewBox="0 0 24 24"><path d="M9 11l2 2 4-4"/><rect x="3" y="4" width="18" height="16" rx="2"/></svg>一覧</button>
   <button id="nav-players" onclick="go('players')"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M4 20c0-3 2.5-5 5-5s5 2 5 5"/><circle cx="17" cy="9" r="2.2"/><path d="M15.5 20c0-2 1-3.5 2.5-4"/></svg>選手</button>
   <button id="nav-cards" onclick="go('cards')"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M7 9v6M10 9v6M13 9v6M17 9v6"/></svg>発行</button>
 </nav>
@@ -389,7 +411,20 @@ let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
-const today=todayStr();
+let recvSelDate=todayStr(); // 受付で選択中の提出日
+
+/* 提出ステータス: その日に提出=○(ontime) / 遅れて提出=△(late) / 記録なし=×(none) */
+function noteStatus(n){
+  if(!n)return 'none';
+  const logged=n.logged||n.d;       // 実際に入力した日（無ければ提出日と同じ扱い＝○）
+  return (n.d===logged)?'ontime':'late';
+}
+function statusOf(p,dateStr){
+  const n=p.notes.find(x=>x.d===dateStr);
+  return noteStatus(n);
+}
+const STMARK={ontime:'○',late:'△',none:'×'};
+const STCOL={ontime:'var(--ok)',late:'var(--warn)',none:'var(--ink-faint)'};
 
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800);}
 function setSync(s){const el=$('#sync');el.className='sync '+s;}
@@ -478,23 +513,26 @@ window.go=v=>{
   if(v==='players')renderPlayers();
   if(v==='cards')renderCards();
   if(v==='recv')startReception();
+  if(v==='attend')renderAttend();
   if(v==='settings')renderUser();
 };
 
 /* ---------- home ---------- */
 function renderHome(){
-  const done=players.filter(p=>p.notes.some(n=>n.d===today)).length;
+  const t=todayStr();
+  const done=players.filter(p=>p.notes.some(n=>n.d===t)).length;
   const total=players.length;
   $('#h-done').textContent=done;$('#h-total').textContent=total;
   $('#h-bar').style.width=(total?done/total*100:0)+'%';
-  $('#h-date').textContent=fmt(today)+'の提出状況';
-  const pend=players.filter(p=>!p.notes.some(n=>n.d===today));
+  $('#h-date').textContent=fmt(t)+'の提出状況';
+  const pend=players.filter(p=>!p.notes.some(n=>n.d===t));
   $('#h-pending').innerHTML=pend.length?pend.map(p=>prow(p,true)).join(''):'<div class="empty">🎉 全員提出済み</div>';
 }
 
 /* ---------- reception（提出チェックのみ） ---------- */
 let scanning=null;
 function startReception(){
+  const dp=$('#recvDate'); if(dp&&!dp.value)dp.value=recvSelDate;
   renderRecvDone();
   $('#quickpick').innerHTML=players.length?players.map(p=>recvRow(p)).join(''):'<div class="empty">選手がいません。「発行」から追加してください。</div>';
   const box=$('#reader');box.innerHTML='';
@@ -504,24 +542,32 @@ function startReception(){
       txt=>onScan(txt),()=>{}).catch(()=>{box.innerHTML='<div class="empty" style="padding:24px">カメラが使えません。下から選手をタップしてください。</div>';});
   }catch(e){box.innerHTML='<div class="empty" style="padding:24px">下から選手をタップしてください。</div>';}
 }
+window.onRecvDateChange=()=>{
+  recvSelDate=$('#recvDate').value||todayStr();
+  renderRecvDone();
+  $('#quickpick').innerHTML=players.map(p=>recvRow(p)).join('');
+};
 function stopScan(){if(scanning){scanning.stop().then(()=>scanning.clear()).catch(()=>{});scanning=null;}}
 function onScan(txt){const p=players.find(x=>x.id===txt)||players.find(x=>x.name===txt);if(p)markSubmitted(p.id);}
 function recvRow(p){
-  const done=p.notes.some(n=>n.d===today);
+  const st=statusOf(p,recvSelDate);
+  const label={ontime:'○ 提出済み',late:'△ 遅れて提出',none:'タップで提出記録'}[st];
   return `<div class="prow" onclick="markSubmitted('${p.id}')">
     <div class="avatar">${initials(p.name)}</div>
-    <div class="meta"><div class="nm">${p.name}</div><div class="last">${done?'✓ 今日提出済み':'タップで提出記録'}</div></div>
-    <div class="cnt">${done?'済 ✓':'記録'}</div></div>`;
+    <div class="meta"><div class="nm">${p.name}</div><div class="last">${label}</div></div>
+    <div class="cnt" style="color:${STCOL[st]}">${st==='none'?'記録':STMARK[st]}</div></div>`;
 }
 function renderRecvDone(){
-  const done=players.filter(p=>p.notes.some(n=>n.d===today));
-  $('#recvDone').innerHTML=done.length?`<div class="banner" style="color:var(--ok);background:#e7f5ee;border-color:#bfe6cf">今日の提出済み: ${done.map(p=>p.name).join('、')}</div>`:'';
+  const done=players.filter(p=>p.notes.some(n=>n.d===recvSelDate));
+  const isToday=recvSelDate===todayStr();
+  const lbl=isToday?'本日':fmt(recvSelDate);
+  $('#recvDone').innerHTML=done.length?`<div class="banner" style="color:var(--ok);background:var(--accent-wash);border-color:var(--accent)">${lbl}の提出済み: ${done.map(p=>p.name).join('、')}</div>`:'';
 }
 window.markSubmitted=id=>{
   const p=players.find(x=>x.id===id);if(!p)return;
-  if(p.notes.some(n=>n.d===today)){toast(p.name+' さんは提出済みです');return;}
-  // 中身が空の「提出のみ」記録を作る（あとで詳細から追記できる）
-  p.notes.push({d:today,s:'',k:[],kw:[],t:''});
+  if(p.notes.some(n=>n.d===recvSelDate)){toast(p.name+' さんは記録済みです');return;}
+  // 提出日=選択日、logged=実際に記録した日。両者が違えば△（遅れて提出）になる
+  p.notes.push({d:recvSelDate,logged:todayStr(),s:'',k:[],kw:[],t:''});
   p.notes.sort((a,b)=>a.d<b.d?-1:1);
   save();toast(p.name+' さんの提出を記録しました');
   renderRecvDone();
@@ -535,7 +581,7 @@ window.openNoteModal=(id,idx)=>{
   editTarget={id,idx:(idx===undefined?null:idx)};
   const n=(idx!==undefined&&idx!==null)?p.notes[idx]:null;
   $('#nmTitle').textContent=(n?p.name+' さんの記録を編集':p.name+' さんの記録を追加');
-  $('#nmDate').value=n?n.d:today;
+  $('#nmDate').value=n?n.d:todayStr();
   $('#nmBody').value=n?(n.s||''):'';
   $('#nmTeacher').value=n?(n.t||''):'';
   curTags=n?(n.k||[]).slice():['cog','jdg','sel','exe'];
@@ -556,7 +602,11 @@ window.delKw=i=>{curKw.splice(i,1);renderKw();};
 window.saveNote=()=>{
   if(!editTarget)return;
   const p=players.find(x=>x.id===editTarget.id);if(!p)return;
-  const rec={d:$('#nmDate').value||today,s:$('#nmBody').value.trim(),k:curTags.slice(),kw:curKw.slice(),t:$('#nmTeacher').value.trim()};
+  const dsel=$('#nmDate').value||todayStr();
+  let logged;
+  if(editTarget.idx===null){ logged=todayStr(); }        // 新規：実際に入力した日
+  else { logged=p.notes[editTarget.idx].logged||p.notes[editTarget.idx].d; } // 編集：元のloggedを維持
+  const rec={d:dsel,logged,s:$('#nmBody').value.trim(),k:curTags.slice(),kw:curKw.slice(),t:$('#nmTeacher').value.trim()};
   if(editTarget.idx===null){p.notes.push(rec);}else{p.notes[editTarget.idx]=rec;}
   p.notes.sort((a,b)=>a.d<b.d?-1:1);
   save();toast('保存しました');
@@ -576,6 +626,60 @@ function prow(p,pending,mode){
     ${pending?'':'<div class="cnt">'+cnt+'</div>'}</div>`;
 }
 function balance(p){const c={cog:0,jdg:0,sel:0,exe:0};let t=0;p.notes.forEach(n=>n.k.forEach(k=>{if(c[k]!=null){c[k]++;t++;}}));if(!t)return c;Object.keys(c).forEach(k=>c[k]=c[k]/t);return c;}
+
+/* ---------- attendance（提出一覧） ---------- */
+function allNoteDates(){
+  const s=new Set();
+  players.forEach(p=>p.notes.forEach(n=>s.add(n.d)));
+  return [...s].sort((a,b)=>a>b?-1:1); // 新しい順
+}
+function submitRate(p){
+  const dates=allNoteDates();
+  if(!dates.length)return 0;
+  const cnt=dates.filter(d=>statusOf(p,d)!=='none').length;
+  return Math.round(cnt/dates.length*100);
+}
+function renderAttend(){
+  const wrap=$('#attendWrap');
+  if(!players.length){wrap.innerHTML='<div class="empty">選手がいません。</div>';return;}
+  const dates=allNoteDates();
+  if(!dates.length){wrap.innerHTML='<div class="empty">まだ提出記録がありません。受付から記録しましょう。</div>';return;}
+  const shown=dates.slice(0,14); // 直近14日分
+  const head=`<tr><th class="anm">選手</th><th class="art">提出率</th>${shown.map(d=>`<th>${(+d.split('-')[1])}/${(+d.split('-')[2])}</th>`).join('')}</tr>`;
+  const rows=players.map(p=>{
+    const rate=submitRate(p);
+    const cells=shown.map(d=>{
+      const st=statusOf(p,d);
+      return `<td><span class="amark" style="color:${STCOL[st]}" onclick="cycleStatus('${p.id}','${d}')">${STMARK[st]}</span></td>`;
+    }).join('');
+    return `<tr><td class="anm">${esc(p.name)}</td><td class="art"><b>${rate}</b><span>%</span></td>${cells}</tr>`;
+  }).join('');
+  wrap.innerHTML=`<table class="attend">${head}${rows}</table>`;
+}
+/* セルをタップ：○→△→×→○ と循環。手動修正 */
+window.cycleStatus=(id,d)=>{
+  const p=players.find(x=>x.id===id);if(!p)return;
+  const i=p.notes.findIndex(n=>n.d===d);
+  const cur=statusOf(p,d); // ontime/late/none
+  const next={ontime:'late',late:'none',none:'ontime'}[cur];
+  if(next==='none'){
+    if(i>=0){
+      // 中身のある記録を消す時は確認
+      const n=p.notes[i];
+      const hasContent=n.s||(n.k&&n.k.length)||(n.kw&&n.kw.length)||n.t;
+      if(hasContent && !confirm('この日の記録には内容があります。×（未提出）にすると内容も消えます。よろしいですか？'))return;
+      p.notes.splice(i,1);
+    }
+  }else if(next==='ontime'){
+    if(i>=0){p.notes[i].logged=d;}                    // 提出日と実日を一致→○
+    else{p.notes.push({d,logged:d,s:'',k:[],kw:[],t:''});}
+  }else if(next==='late'){
+    if(i>=0){p.notes[i].logged=todayStr()>d?todayStr():d;} // 実日を後日に→△
+    else{p.notes.push({d,logged:todayStr(),s:'',k:[],kw:[],t:''});}
+  }
+  p.notes.sort((a,b)=>a.d<b.d?-1:1);
+  save();renderAttend();
+};
 
 /* ---------- players / detail ---------- */
 function renderPlayers(){$('#playerList').innerHTML=players.map(p=>prow(p,false)).join('');}
@@ -623,6 +727,18 @@ function renderCards(){
   });
   renderManage();
 }
+window.doPrint=()=>{
+  if(!players.length){toast('先に選手を追加してください');return;}
+  // iOSのホーム画面アプリ（standalone）は window.print() が使えない
+  const isStandalone = window.navigator.standalone===true || (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches);
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if(isStandalone && isIOS){
+    alert('ホーム画面のアプリからは印刷できません。\nSafariで note-virid-iota.vercel.app を開き直してから、この画面で「印刷 / PDF保存」を押してください。');
+    return;
+  }
+  try{ window.print(); }
+  catch(e){ alert('この端末では印刷を開始できませんでした。ブラウザのメニューから「プリント」を選んでください。'); }
+};
 function renderManage(){
   const box=$('#manageList');if(!box)return;
   box.innerHTML=players.length?players.map(p=>`<div class="prow">
