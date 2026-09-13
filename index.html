@@ -225,6 +225,7 @@ table.attend .art span{font-size:10px;color:var(--ink-faint)}
 .amark{display:inline-block;min-width:24px;font-size:16px;font-weight:700;cursor:pointer;line-height:1;padding:4px;border-radius:6px;border:2px solid transparent}
 .amark:active{background:var(--paper-2)}
 .amark.present{border-color:var(--ok)}
+.amark.late{border-color:var(--warn)}
 .amark.alert{border-color:var(--err);background:rgba(226,104,95,.12)}
 .monthnav{display:flex;align-items:center;justify-content:center;gap:18px;margin:2px 0 10px}
 .monthnav button{width:40px;height:40px;border-radius:12px;border:1px solid var(--edge);background:var(--card);color:var(--ink);font-size:20px;font-family:inherit;cursor:pointer;line-height:1}
@@ -313,7 +314,7 @@ table.attend .art span{font-size:10px;color:var(--ink-faint)}
       <button class="btn soft" onclick="attnAll(false)">全員リセット</button>
     </div>
     <div id="attnDone" class="plist" style="margin-bottom:12px"></div>
-    <h2 class="section">選手をタップで出席／欠席</h2>
+    <h2 class="section">タップで 出席 → 遅刻 → 欠席 と切替</h2>
     <div id="attnList" class="plist"></div>
   </div>
 </section>
@@ -326,7 +327,7 @@ table.attend .art span{font-size:10px;color:var(--ink-faint)}
     <span id="monthLabel">—</span>
     <button onclick="shiftMonth(1)" aria-label="次の月">›</button>
   </div>
-  <p class="hint" style="text-align:left">○=その日に提出 / △=遅れて提出 / ×=未提出。<b>緑枠=出席</b>、<b style="color:var(--err)">赤枠=出席したのに未提出</b>。セルをタップで提出状況を修正できます。</p>
+  <p class="hint" style="text-align:left">○=その日に提出 / △=遅れて提出 / ×=未提出。枠色は出席状況（<b style="color:var(--ok)">緑=出席</b> / <b style="color:var(--warn)">橙=遅刻</b> / <b style="color:var(--err)">赤=出席したのに未提出</b>）。セルをタップで提出状況を修正できます。</p>
   <div id="attendWrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch"></div>
   <h2 class="section" style="margin-top:24px">AI分析用にエクスポート</h2>
   <p class="hint" style="text-align:left">全員の記録を書き出します。コピーしてクロードやChatGPTに貼ると、成長過程を分析してもらえます。</p>
@@ -460,7 +461,7 @@ const K={cog:'認知',jdg:'判断',sel:'選択',exe:'実行'};
 const Kcol={cog:'var(--cog)',jdg:'var(--jdg)',sel:'var(--sel)',exe:'var(--exe)'};
 let players=[];
 let teamName='東淀中学校 女子バスケ部';
-let attendance={}; // { 'YYYY-MM-DD': [playerId, ...] } 出席した選手
+let attendance={}; // { 'YYYY-MM-DD': { playerId: 'present'|'late' } }。旧形式（配列=全員present）も読める
 let currentUser=null;
 let unsub=null;
 let seq=1;
@@ -615,33 +616,51 @@ function startNoteRecv(){
 }
 /* ---- 出席チェック ---- */
 window.onAttnDateChange=()=>{ attnSelDate=$('#attnDate').value||todayStr(); renderAttn(); };
-function isPresent(id,d){ return (attendance[d]||[]).includes(id); }
+/* 出席状態を返す: 'present' | 'late' | 'absent'。旧形式(配列)は全員present扱い */
+function attnStatus(id,d){
+  const rec=attendance[d];
+  if(!rec)return 'absent';
+  if(Array.isArray(rec))return rec.includes(id)?'present':'absent';
+  return rec[id]||'absent';
+}
+function isPresent(id,d){ const s=attnStatus(id,d); return s==='present'||s==='late'; } // 出席扱い（遅刻含む）
+function setAttn(id,d,st){
+  let rec=attendance[d];
+  if(Array.isArray(rec)){ const o={}; rec.forEach(x=>o[x]='present'); rec=o; attendance[d]=o; } // 旧→新へ移行
+  if(!rec){ rec={}; attendance[d]=rec; }
+  if(st==='absent'){ delete rec[id]; } else { rec[id]=st; }
+  if(!Object.keys(rec).length)delete attendance[d];
+}
+const ATTN_JP={present:'出席',late:'遅刻',absent:'欠席'};
+const ATTN_MARK={present:'出席 ✓',late:'遅刻 △',absent:'欠席'};
+const ATTN_COL={present:'var(--ok)',late:'var(--warn)',absent:'var(--ink-faint)'};
 function renderAttn(){
-  const list=attendance[attnSelDate]||[];
-  const present=players.filter(p=>list.includes(p.id));
+  const present=players.filter(p=>attnStatus(p.id,attnSelDate)==='present');
+  const late=players.filter(p=>attnStatus(p.id,attnSelDate)==='late');
   const isToday=attnSelDate===todayStr();
   const lbl=isToday?'本日':fmt(attnSelDate);
-  $('#attnDone').innerHTML= present.length
-    ? `<div class="banner" style="color:var(--ok);background:var(--accent-wash);border-color:var(--accent)">${lbl}の出席: ${present.length}名（${present.map(p=>p.name).join('、')}）</div>`
+  const total=present.length+late.length;
+  $('#attnDone').innerHTML= total
+    ? `<div class="banner" style="color:var(--ok);background:var(--accent-wash);border-color:var(--accent)">${lbl}: 出席${present.length}名${late.length?' ・ 遅刻'+late.length+'名':''}</div>`
     : `<div class="banner">${lbl}の出席はまだ記録されていません。</div>`;
   $('#attnList').innerHTML=players.length?players.map(p=>{
-    const on=isPresent(p.id,attnSelDate);
+    const st=attnStatus(p.id,attnSelDate);
+    const hint={present:'タップで遅刻に',late:'タップで欠席に',absent:'タップで出席に'}[st];
     return `<div class="prow" onclick="toggleAttn('${p.id}')">
       <div class="avatar">${initials(p.name)}</div>
-      <div class="meta"><div class="nm">${p.name}</div><div class="last">${on?'出席':'タップで出席にする'}</div></div>
-      <div class="cnt" style="color:${on?'var(--ok)':'var(--ink-faint)'}">${on?'出席 ✓':'欠席'}</div></div>`;
+      <div class="meta"><div class="nm">${p.name}</div><div class="last">${hint}</div></div>
+      <div class="cnt" style="color:${ATTN_COL[st]}">${ATTN_MARK[st]}</div></div>`;
   }).join(''):'<div class="empty">選手がいません。</div>';
 }
+/* タップで 欠席→出席→遅刻→欠席 と循環 */
 window.toggleAttn=id=>{
-  if(!attendance[attnSelDate])attendance[attnSelDate]=[];
-  const arr=attendance[attnSelDate];
-  const i=arr.indexOf(id);
-  if(i>=0)arr.splice(i,1); else arr.push(id);
-  if(!arr.length)delete attendance[attnSelDate];
+  const cur=attnStatus(id,attnSelDate);
+  const next={absent:'present',present:'late',late:'absent'}[cur];
+  setAttn(id,attnSelDate,next);
   save();renderAttn();
 };
 window.attnAll=(present)=>{
-  if(present){ attendance[attnSelDate]=players.map(p=>p.id); }
+  if(present){ const o={}; players.forEach(p=>o[p.id]='present'); attendance[attnSelDate]=o; }
   else{ delete attendance[attnSelDate]; }
   save();renderAttn();
 };
@@ -735,7 +754,7 @@ let attendMonth=null; // 'YYYY-MM' 表示中の月
 function allNoteDates(){
   const s=new Set();
   players.forEach(p=>p.notes.forEach(n=>s.add(n.d)));   // ノート提出日
-  Object.keys(attendance).forEach(d=>{ if((attendance[d]||[]).length) s.add(d); }); // 出席日
+  Object.keys(attendance).forEach(d=>{ const r=attendance[d]; const has=Array.isArray(r)?r.length:Object.keys(r||{}).length; if(has) s.add(d); }); // 出席日
   return [...s].sort((a,b)=>a>b?-1:1); // 新しい順
 }
 function allMonths(){
@@ -778,10 +797,13 @@ function renderAttend(){
     const rate=submitRateInMonth(p,attendMonth);
     const cells=dates.map(d=>{
       const st=statusOf(p,d);
-      const present=isPresent(p.id,d);
-      // 出席してるのにノート未提出＝要注意（枠を強調）
-      const alert = present && st==='none';
-      const cls='amark'+(present?' present':'')+(alert?' alert':'');
+      const at=attnStatus(p.id,d); // present/late/absent
+      const cameToTraining=(at==='present'||at==='late');
+      const alert = cameToTraining && st==='none'; // 出席(遅刻含む)なのに未提出＝要注意
+      let cls='amark';
+      if(at==='present')cls+=' present';
+      else if(at==='late')cls+=' late';
+      if(alert)cls+=' alert';
       return `<td><span class="${cls}" style="color:${STCOL[st]}" onclick="cycleStatus('${p.id}','${d}')">${STMARK[st]}</span></td>`;
     }).join('');
     return `<tr><td class="anm">${esc(p.name)}</td><td class="art"><b>${rate}</b><span>%</span></td>${cells}</tr>`;
