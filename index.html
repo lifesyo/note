@@ -300,7 +300,24 @@ table.attend .art span{font-size:10px;color:var(--ink-faint)}
   </div>
   <p class="hint" style="text-align:left">○=その日に提出 / △=遅れて提出 / ×=未提出。セルをタップで修正できます。提出率はこの月のぶんです。</p>
   <div id="attendWrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch"></div>
+  <h2 class="section" style="margin-top:24px">AI分析用にエクスポート</h2>
+  <p class="hint" style="text-align:left">全員の記録を書き出します。コピーしてクロードやChatGPTに貼ると、成長過程を分析してもらえます。</p>
+  <div style="display:flex;gap:10px">
+    <button class="btn soft" onclick="exportForAI('month')">表示中の月</button>
+    <button class="btn soft" onclick="exportForAI('all')">全期間</button>
+  </div>
 </section>
+
+<!-- EXPORT モーダル -->
+<div class="modal" id="exportModal">
+  <div class="modal-inner">
+    <div class="modal-head"><span id="exTitle">AI分析用テキスト</span><button class="modal-x" onclick="closeExport()">×</button></div>
+    <p class="hint" style="text-align:left;margin-top:0">下の「コピー」を押して、クロードやChatGPTに貼り付けてください。</p>
+    <button class="btn primary" onclick="copyExport()" style="margin-bottom:12px">📋 コピーする</button>
+    <textarea id="exportText" rows="16" readonly style="font-size:13px;line-height:1.5"></textarea>
+    <button class="btn ghost" onclick="closeExport()" style="margin-top:10px">閉じる</button>
+  </div>
+</div>
 
 <!-- PLAYERS -->
 <section class="view" id="v-players">
@@ -713,7 +730,61 @@ window.cycleStatus=(id,d)=>{
   save();renderAttend();
 };
 
-/* ---------- players / detail ---------- */
+/* ---------- AI分析用エクスポート ---------- */
+const STJP={ontime:'期限内提出',late:'遅れて提出',none:'未提出'};
+window.exportForAI=(scope)=>{
+  if(!players.length){toast('選手がいません');return;}
+  const ym = scope==='month' ? (attendMonth||todayStr().slice(0,7)) : null;
+  const periodLabel = ym ? monthLabel(ym) : '全期間';
+  // 依頼文（プロンプト）
+  const prompt =
+`あなたは中学女子バスケットボール部のコーチを補佐するアシスタントです。指導観は「認知→判断→選択→実行」（状況を見る→どうすべきか考える→選ぶ→実際に動く）です。
+以下は${periodLabel}の部員のバスケットノートの記録です。選手ごとに、次の観点で成長過程を言語化してください。
+1. 記述が「認知・判断・選択・実行」のどこに触れているかの変化（実行中心→認知・判断が増えると思考が深まったサイン）
+2. 振り返りの質（事実の記述だけか、原因分析や次への課題まで書けているか）
+3. 使う言葉の変化（気合い中心→具体的・戦術的な言葉へ）
+4. 継続性・記述量
+最後に、各選手へフィードバック面談で伝えるとよい「具体的に成長した点」を、本人の記述を根拠として2〜3行でまとめてください。
+
+=== 記録ここから ===
+`;
+  // 本文（全員ぶん）
+  let body='';
+  players.forEach(p=>{
+    const notes = p.notes
+      .filter(n => !ym || n.d.slice(0,7)===ym)
+      .filter(n => n.s && n.s.trim())      // 本文のある記録だけ
+      .sort((a,b)=>a.d<b.d?-1:1);
+    body += `\n【${p.name}】（${periodLabel}に本文のある記録: ${notes.length}件）\n`;
+    if(!notes.length){ body += '（本文の記録なし）\n'; return; }
+    notes.forEach(n=>{
+      const tags=(n.k||[]).map(k=>K[k]).join('・')||'—';
+      body += `\n■ ${n.d}（${STJP[noteStatus(n)]}）\n観点: ${tags}\n`;
+      if(n.kw&&n.kw.length) body += `キーワード: ${n.kw.join('、')}\n`;
+      body += `本文: ${n.s.trim()}\n`;
+      if(n.t) body += `先生の一言: ${n.t}\n`;
+    });
+  });
+  const full = prompt + body + '\n=== 記録ここまで ===\n';
+  $('#exTitle').textContent = periodLabel + ' の分析用テキスト';
+  $('#exportText').value = full;
+  $('#exportModal').classList.add('open');
+  document.body.classList.add('modal-lock');
+  $('#exportModal .modal-inner').scrollTop=0;
+};
+window.closeExport=()=>{$('#exportModal').classList.remove('open');document.body.classList.remove('modal-lock');};
+window.copyExport=async()=>{
+  const t=$('#exportText').value;
+  try{
+    await navigator.clipboard.writeText(t);
+    toast('コピーしました');
+  }catch(e){
+    // フォールバック：選択状態にする
+    const ta=$('#exportText');ta.removeAttribute('readonly');ta.focus();ta.select();
+    try{document.execCommand('copy');toast('コピーしました');}catch(_){toast('長押しで全選択してコピーしてください');}
+    ta.setAttribute('readonly','');
+  }
+};
 function renderPlayers(){$('#playerList').innerHTML=players.map(p=>prow(p,false)).join('');}
 window.openDetail=id=>{
   const p=players.find(x=>x.id===id);go('detail');
