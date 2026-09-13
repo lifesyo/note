@@ -761,15 +761,45 @@ function renderCards(){
 }
 window.doPrint=()=>{
   if(!players.length){toast('先に選手を追加してください');return;}
-  // iOSのホーム画面アプリ（standalone）は window.print() が使えない
-  const isStandalone = window.navigator.standalone===true || (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches);
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  if(isStandalone && isIOS){
-    alert('ホーム画面のアプリからは印刷できません。\nSafariで note-virid-iota.vercel.app を開き直してから、この画面で「印刷 / PDF保存」を押してください。');
-    return;
-  }
-  try{ window.print(); }
-  catch(e){ alert('この端末では印刷を開始できませんでした。ブラウザのメニューから「プリント」を選んでください。'); }
+  // 印刷専用ページを新規ウィンドウに生成（本体のprint CSSに依存せず確実）
+  const w=window.open('','_blank');
+  if(!w){ alert('ポップアップがブロックされました。ブラウザ設定でこのサイトのポップアップを許可してください。'); return; }
+  // 各選手のバーコードSVGをその場で生成
+  const cards=players.map(p=>{
+    const holder=document.createElement('div');
+    let inner='';
+    try{
+      const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+      JsBarcode(svg,p.id,{format:'CODE128',displayValue:true,fontSize:13,height:55,margin:6});
+      holder.appendChild(svg);
+      inner=holder.innerHTML;
+    }catch(e){}
+    if(!inner) inner=`<div style="font-family:monospace;font-size:16px;letter-spacing:2px;padding:16px 0">${p.id}</div>`;
+    return `<div class="card"><div class="nm">${esc(p.name)}</div>${inner}</div>`;
+  }).join('');
+  w.document.open();
+  w.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>バーコード印刷 - Note IQ</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:-apple-system,"Hiragino Sans",sans-serif;background:#fff;color:#111;padding:16px}
+      h1{font-size:15px;font-weight:700;margin-bottom:4px}
+      p{font-size:12px;color:#666;margin-bottom:16px}
+      .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+      .card{border:1px dashed #999;border-radius:8px;padding:12px 10px 8px;text-align:center;page-break-inside:avoid}
+      .card .nm{font-weight:700;font-size:14px;margin-bottom:6px;color:#111}
+      .card svg{max-width:100%;height:auto}
+      .btnbar{position:sticky;top:0;background:#fff;padding-bottom:12px;display:flex;gap:8px}
+      .btnbar button{flex:1;padding:12px;border:none;border-radius:10px;background:#2f9e8f;color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer}
+      @media print{.btnbar{display:none}body{padding:0}.grid{gap:8px}}
+    </style></head><body>
+    <div class="btnbar"><button onclick="window.print()">🖨 印刷 / PDFで保存</button></div>
+    <h1>選手バーコード</h1>
+    <p>切り取って選手証やノート表紙に貼り、受付でスキャンします。</p>
+    <div class="grid">${cards}</div>
+    </body></html>`);
+  w.document.close();
 };
 function renderManage(){
   const box=$('#manageList');if(!box)return;
