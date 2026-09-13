@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Note IQ</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0e1116">
@@ -26,7 +26,7 @@
   --shadow-lg:0 2px 10px rgba(0,0,0,.5),0 22px 44px -14px rgba(0,0,0,.7);
   --r-sm:10px;--r:14px;--r-lg:18px;
 }
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 html,body{margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
   color:var(--ink);background:var(--paper);line-height:1.65;-webkit-font-smoothing:antialiased;
@@ -286,7 +286,8 @@ table.attend .art span{font-size:10px;color:var(--ink-faint)}
 <section class="view" id="v-recv">
   <div class="segbar">
     <button class="seg on" id="seg-note" onclick="switchRecv('note')">ノート受付</button>
-    <button class="seg" id="seg-attn" onclick="switchRecv('attn')">出席チェック</button>
+    <button class="seg" id="seg-attn" onclick="switchRecv('attn')">出席</button>
+    <button class="seg" id="seg-prac" onclick="switchRecv('prac')">練習記録</button>
   </div>
 
   <!-- ノート受付 -->
@@ -316,6 +317,31 @@ table.attend .art span{font-size:10px;color:var(--ink-faint)}
     <div id="attnDone" class="plist" style="margin-bottom:12px"></div>
     <h2 class="section">タップで 出席 → 遅刻 → 欠席 と切替</h2>
     <div id="attnList" class="plist"></div>
+  </div>
+
+  <!-- 練習記録 -->
+  <div id="recv-prac" style="display:none">
+    <div class="field" style="margin-bottom:14px">
+      <label>練習日</label>
+      <input type="date" id="pracDate" onchange="onPracDateChange()">
+    </div>
+    <div class="field">
+      <label>練習メニュー</label>
+      <textarea id="pracText" rows="2" placeholder="例：3メンでのフィニッシュ、1on1、ハーフコートDF"></textarea>
+    </div>
+    <div class="field">
+      <label>カテゴリ（複数選択可・タップで切替）</label>
+      <div id="pracCatTags" class="tags"></div>
+      <div class="addrow" style="margin-top:8px">
+        <input type="text" id="newCat" placeholder="新しいカテゴリを作る" onkeydown="if(event.key==='Enter')addCat()">
+        <button class="btn soft" onclick="addCat()">追加</button>
+      </div>
+    </div>
+    <button class="btn primary" onclick="addPractice()">この練習を記録する</button>
+    <h2 class="section">この日の練習</h2>
+    <div id="pracList"></div>
+    <h2 class="section">カテゴリ別の回数（この月）</h2>
+    <div id="pracStats"></div>
   </div>
 </section>
 
@@ -462,6 +488,8 @@ const Kcol={cog:'var(--cog)',jdg:'var(--jdg)',sel:'var(--sel)',exe:'var(--exe)'}
 let players=[];
 let teamName='東淀中学校 女子バスケ部';
 let attendance={}; // { 'YYYY-MM-DD': { playerId: 'present'|'late' } }。旧形式（配列=全員present）も読める
+let practices={};  // { 'YYYY-MM-DD': [ {text:'...', cats:['シュート',...]} ] }
+let practiceCats=[]; // 作成済みカテゴリ名のリスト
 let currentUser=null;
 let unsub=null;
 let seq=1;
@@ -533,6 +561,8 @@ function subscribe(uid){
       players=Array.isArray(d.players)?d.players:[];
       if(d.teamName)teamName=d.teamName;
       if(d.attendance&&typeof d.attendance==='object')attendance=d.attendance;
+      if(d.practices&&typeof d.practices==='object')practices=d.practices;
+      if(Array.isArray(d.practiceCats))practiceCats=d.practiceCats;
       if(d.seq)seq=d.seq;
       $('#teamTag').textContent=teamName;
     }else{
@@ -548,7 +578,7 @@ async function save(){
   if(!currentUser)return;
   setSync('syncing');
   try{
-    await setDoc(doc(db,'noteiq',currentUser.uid),{players,teamName,attendance,seq,updatedAt:new Date().toISOString()});
+    await setDoc(doc(db,'noteiq',currentUser.uid),{players,teamName,attendance,practices,practiceCats,seq,updatedAt:new Date().toISOString()});
     setSync('synced');
   }catch(e){console.error(e);setSync('error');toast('⚠️ 保存に失敗しました');}
 }
@@ -590,19 +620,25 @@ function renderHome(){
 let scanning=null;
 let recvMode='note';
 let attnSelDate=todayStr();
+let pracSelDate=todayStr();
+let pracSelCats=[]; // 入力中の練習に付けるカテゴリ
 function startReception(){
   const dp=$('#recvDate'); if(dp&&!dp.value)dp.value=recvSelDate;
   const ap=$('#attnDate'); if(ap&&!ap.value)ap.value=attnSelDate;
+  const pp=$('#pracDate'); if(pp&&!pp.value)pp.value=pracSelDate;
   switchRecv(recvMode);
 }
 window.switchRecv=mode=>{
   recvMode=mode;
   $('#seg-note').classList.toggle('on',mode==='note');
   $('#seg-attn').classList.toggle('on',mode==='attn');
+  $('#seg-prac').classList.toggle('on',mode==='prac');
   $('#recv-note').style.display=mode==='note'?'block':'none';
   $('#recv-attn').style.display=mode==='attn'?'block':'none';
+  $('#recv-prac').style.display=mode==='prac'?'block':'none';
   if(mode==='note'){ startNoteRecv(); }
-  else{ stopScan(); renderAttn(); }
+  else if(mode==='attn'){ stopScan(); renderAttn(); }
+  else { stopScan(); renderPrac(); }
 };
 function startNoteRecv(){
   renderRecvDone();
@@ -664,6 +700,77 @@ window.attnAll=(present)=>{
   else{ delete attendance[attnSelDate]; }
   save();renderAttn();
 };
+
+/* ---- 練習記録 ---- */
+window.onPracDateChange=()=>{ pracSelDate=$('#pracDate').value||todayStr(); renderPrac(); };
+window.addCat=()=>{
+  const v=$('#newCat').value.trim();
+  if(!v)return;
+  if(!practiceCats.includes(v))practiceCats.push(v);
+  if(!pracSelCats.includes(v))pracSelCats.push(v); // 作ったら選択状態に
+  $('#newCat').value='';
+  save();renderPracCatTags();
+};
+function renderPracCatTags(){
+  const box=$('#pracCatTags');
+  if(!practiceCats.length){ box.innerHTML='<span class="hint" style="margin:0">カテゴリがありません。下で作成してください。</span>'; return; }
+  box.innerHTML=practiceCats.map(c=>{
+    const on=pracSelCats.includes(c);
+    return `<span class="tag ${on?'on':'off'}" style="border-color:var(--accent);color:${on?'#fff':'var(--accent-ink)'};${on?'background:var(--accent);':''}" onclick="togglePracCat('${c.replace(/'/g,"\\'")}')">${esc(c)}</span>`;
+  }).join('');
+}
+window.togglePracCat=c=>{
+  const i=pracSelCats.indexOf(c);
+  if(i>=0)pracSelCats.splice(i,1); else pracSelCats.push(c);
+  renderPracCatTags();
+};
+window.addPractice=()=>{
+  const text=$('#pracText').value.trim();
+  if(!text){toast('練習メニューを入力してください');return;}
+  if(!practices[pracSelDate])practices[pracSelDate]=[];
+  practices[pracSelDate].push({text,cats:pracSelCats.slice()});
+  $('#pracText').value='';
+  pracSelCats=[];
+  save();renderPrac();toast('練習を記録しました');
+};
+window.delPractice=(idx)=>{
+  const arr=practices[pracSelDate];if(!arr)return;
+  arr.splice(idx,1);
+  if(!arr.length)delete practices[pracSelDate];
+  save();renderPrac();
+};
+function renderPrac(){
+  renderPracCatTags();
+  // この日の練習一覧
+  const arr=practices[pracSelDate]||[];
+  $('#pracList').innerHTML = arr.length ? arr.map((pr,i)=>`
+    <div class="card pad" style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;gap:8px">
+        <div style="flex:1">
+          <div style="white-space:pre-wrap">${esc(pr.text)}</div>
+          <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')||'<span class="hint" style="margin:0">カテゴリなし</span>'}</div>
+        </div>
+        <span class="noterow-del" style="color:var(--exe)" onclick="delPractice(${i})">削除</span>
+      </div>
+    </div>`).join('') : '<div class="empty">この日の練習はまだ記録されていません。</div>';
+  // カテゴリ別集計（表示中の練習日の月）
+  const ym=pracSelDate.slice(0,7);
+  const count={};
+  Object.keys(practices).forEach(d=>{
+    if(d.slice(0,7)!==ym)return;
+    practices[d].forEach(pr=>(pr.cats||[]).forEach(c=>{count[c]=(count[c]||0)+1;}));
+  });
+  const cats=Object.keys(count).sort((a,b)=>count[b]-count[a]);
+  if(!cats.length){ $('#pracStats').innerHTML='<div class="empty">まだ集計データがありません。</div>'; return; }
+  const max=Math.max(...cats.map(c=>count[c]));
+  $('#pracStats').innerHTML=`<div class="card pad">${cats.map(c=>`
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>${esc(c)}</span><span style="color:var(--accent-ink);font-weight:700">${count[c]}回</span></div>
+      <div class="bar" style="margin-top:0"><i style="width:${count[c]/max*100}%"></i></div>
+    </div>`).join('')}
+    <div class="hint" style="text-align:left;margin-top:4px">${monthLabel(ym)}の練習カテゴリの回数。偏りが一目で分かります。</div>
+  </div>`;
+}
 window.onRecvDateChange=()=>{
   recvSelDate=$('#recvDate').value||todayStr();
   renderRecvDone();
