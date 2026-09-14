@@ -86,6 +86,8 @@ h2.section{font-size:12px;color:var(--ink-faint);font-weight:700;margin:24px 2px
 .today .sub{font-size:12.5px;color:rgba(255,255,255,.72);margin-top:12px;position:relative;letter-spacing:.02em}
 .bar{height:7px;background:rgba(255,255,255,.18);border-radius:999px;overflow:hidden;margin-top:14px;position:relative}
 .bar>i{display:block;height:100%;background:linear-gradient(90deg,#2dd4bf,#38bdf8);border-radius:999px;transition:width .6s cubic-bezier(.4,0,.2,1)}
+.ratiobar{display:flex;height:14px;border-radius:999px;overflow:hidden;background:var(--edge-soft)}
+.ratiobar>i{display:block;height:100%}
 
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:var(--r);
   padding:15px 16px;font-size:15px;font-weight:650;font-family:inherit;cursor:pointer;width:100%;
@@ -140,6 +142,8 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);box-shadow:0 
 .tag[data-k=sel]{color:var(--sel);border-color:var(--sel)}
 .tag[data-k=exe]{color:var(--exe);border-color:var(--exe)}
 .tag.off{opacity:.3;border-color:var(--edge);color:var(--ink-faint)}
+.tag:not([data-k]){color:var(--accent-ink);border-color:var(--edge)}
+.tag.on:not([data-k]){background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 4px 10px -4px var(--accent)}
 .tag.on[data-k=cog]{background:var(--cog);color:#fff;box-shadow:0 4px 10px -4px var(--cog)}
 .tag.on[data-k=jdg]{background:var(--jdg);color:#fff;box-shadow:0 4px 10px -4px var(--jdg)}
 .tag.on[data-k=sel]{background:var(--sel);color:#fff;box-shadow:0 4px 10px -4px var(--sel)}
@@ -179,11 +183,11 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);box-shadow:0 
 .teacher b{font-weight:700}
 
 nav{position:fixed;bottom:0;left:0;right:0;z-index:30;background:rgba(255,255,255,.92);backdrop-filter:saturate(1.4) blur(12px);
-  border-top:1px solid var(--edge-soft);display:flex;padding:7px 8px calc(7px + env(safe-area-inset-bottom))}
-nav button{flex:1;background:none;border:none;font-family:inherit;color:var(--ink-faint);font-size:10.5px;font-weight:600;
-  display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0;cursor:pointer;transition:color .15s}
+  border-top:1px solid var(--edge-soft);display:flex;padding:7px 4px calc(7px + env(safe-area-inset-bottom))}
+nav button{flex:1;background:none;border:none;font-family:inherit;color:var(--ink-faint);font-size:10px;font-weight:600;
+  display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;cursor:pointer;transition:color .15s}
 nav button.on{color:var(--accent-ink)}
-nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+nav svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 nav button.on svg{stroke-width:2.2}
 
 .empty{text-align:center;color:var(--ink-faint);padding:44px 20px;font-size:14px}
@@ -411,6 +415,19 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
   <button class="btn soft noprint" onclick="doPrint()" style="margin-top:12px">🖨 印刷 / PDF保存</button>
 </section>
 
+<!-- PRACTICE HISTORY -->
+<section class="view" id="v-prac">
+  <h2 class="section">練習の記録</h2>
+  <div class="monthnav">
+    <button onclick="shiftPracMonth(-1)" aria-label="前の月">‹</button>
+    <span id="pracMonthLabel">—</span>
+    <button onclick="shiftPracMonth(1)" aria-label="次の月">›</button>
+  </div>
+  <div id="pracFilter" class="tags" style="margin-bottom:12px"></div>
+  <div id="pracRatio"></div>
+  <div id="pracHist"></div>
+</section>
+
 <!-- SETTINGS -->
 <section class="view" id="v-settings">
   <h2 class="section">アカウント</h2>
@@ -428,6 +445,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
   <button class="on" id="nav-home" onclick="go('home')"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>ホーム</button>
   <button id="nav-recv" onclick="go('recv')"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>受付</button>
   <button id="nav-attend" onclick="go('attend')"><svg viewBox="0 0 24 24"><path d="M9 11l2 2 4-4"/><rect x="3" y="4" width="18" height="16" rx="2"/></svg>一覧</button>
+  <button id="nav-prac" onclick="go('prac')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>練習</button>
   <button id="nav-players" onclick="go('players')"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M4 20c0-3 2.5-5 5-5s5 2 5 5"/><circle cx="17" cy="9" r="2.2"/><path d="M15.5 20c0-2 1-3.5 2.5-4"/></svg>選手</button>
   <button id="nav-cards" onclick="go('cards')"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M7 9v6M10 9v6M13 9v6M17 9v6"/></svg>発行</button>
 </nav>
@@ -475,6 +493,32 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
   </div>
 </div>
 
+<!-- 練習編集モーダル -->
+<div class="modal" id="pracModal">
+  <div class="modal-inner">
+    <div class="modal-head"><span id="pmTitle">練習を編集</span><button class="modal-x" onclick="closePracModal()">×</button></div>
+    <div class="field">
+      <label>練習日</label>
+      <input type="date" id="pmDate">
+    </div>
+    <div class="field">
+      <label>練習メニュー</label>
+      <textarea id="pmText" rows="3" placeholder="例：3メンでのフィニッシュ、1on1、ハーフコートDF"></textarea>
+    </div>
+    <div class="field">
+      <label>カテゴリ（タップで切替）</label>
+      <div id="pmCatTags" class="tags"></div>
+      <div class="addrow" style="margin-top:8px">
+        <input type="text" id="pmNewCat" placeholder="新しいカテゴリを作る" onkeydown="if(event.key==='Enter')pmAddCat()">
+        <button class="btn soft" onclick="pmAddCat()">追加</button>
+      </div>
+    </div>
+    <button class="btn primary" onclick="savePracEdit()">保存する</button>
+    <button class="btn danger" onclick="deletePracEdit()" style="margin-top:8px">この練習を削除</button>
+    <button class="btn ghost" onclick="closePracModal()" style="margin-top:8px">やめる</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -517,7 +561,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091404';
+const APP_VER='2026091406';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -631,6 +675,7 @@ window.go=v=>{
   if(v==='cards')renderCards();
   if(v==='recv')startReception();
   if(v==='attend')renderAttend();
+  if(v==='prac')renderPracHist();
   if(v==='settings')renderUser();
 };
 
@@ -802,6 +847,146 @@ function renderPrac(){
     <div class="hint" style="text-align:left;margin-top:4px">${monthLabel(ym)}の練習カテゴリの回数。偏りが一目で分かります。</div>
   </div>`;
 }
+
+/* ========== 練習履歴ページ ========== */
+let pracHistMonth=null;   // 表示中の月 'YYYY-MM'
+let pracHistFilter=null;  // 絞り込み中のカテゴリ（null=全部）
+/* 練習記録がある月の一覧（新しい順） */
+function pracMonths(){
+  const s=new Set();
+  Object.keys(practices).forEach(d=>{ if(practices[d]&&practices[d].length) s.add(d.slice(0,7)); });
+  return [...s].sort((a,b)=>a>b?-1:1);
+}
+window.shiftPracMonth=dir=>{
+  const months=pracMonths(); if(!months.length)return;
+  let i=months.indexOf(pracHistMonth); if(i<0)i=0;
+  i=Math.min(months.length-1,Math.max(0,i-dir));
+  pracHistMonth=months[i]; renderPracHist();
+};
+window.setPracFilter=c=>{ pracHistFilter = (pracHistFilter===c ? null : c); renderPracHist(); };
+function renderPracHist(){
+  const wrap=$('#pracHist'); const lbl=$('#pracMonthLabel'); const filt=$('#pracFilter');
+  const months=pracMonths();
+  if(!months.length){ wrap.innerHTML='<div class="empty">まだ練習が記録されていません。受付の「練習記録」から記録しましょう。</div>'; lbl.textContent='—'; filt.innerHTML=''; return; }
+  if(!pracHistMonth || !months.includes(pracHistMonth)) pracHistMonth=months[0];
+  lbl.textContent=monthLabel(pracHistMonth);
+  // その月の日付（新しい順）
+  const days=Object.keys(practices).filter(d=>d.slice(0,7)===pracHistMonth && practices[d] && practices[d].length).sort((a,b)=>a>b?-1:1);
+  // カテゴリ絞り込みチップ（その月に出てくるカテゴリ）
+  const catSet=new Set();
+  days.forEach(d=>practices[d].forEach(pr=>(pr.cats||[]).forEach(c=>catSet.add(c))));
+  const cats=[...catSet].sort();
+  filt.innerHTML = cats.length ? (
+    `<span class="tag${pracHistFilter===null?' on':''}" onclick="setPracFilter(null)">すべて</span>`+
+    cats.map(c=>`<span class="tag${pracHistFilter===c?' on':''}" onclick="setPracFilter('${esc(c)}')">${esc(c)}</span>`).join('')
+  ) : '';
+  // カテゴリの割合（その月・偏り可視化）
+  $('#pracRatio').innerHTML = renderPracRatio(days);
+  // 本文
+  let html='';
+  days.forEach(d=>{
+    let list=practices[d].map((pr,i)=>({pr,i}));
+    if(pracHistFilter) list=list.filter(x=>(x.pr.cats||[]).includes(pracHistFilter));
+    if(!list.length)return;
+    html+=`<h2 class="section" style="margin-top:18px">${fmt(d)}（${['日','月','火','水','木','金','土'][new Date(d).getDay()]}）</h2>`;
+    html+=list.map(({pr,i})=>`
+      <div class="card pad" style="margin-bottom:8px" onclick="openPracEdit('${d}',${i})">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+          <div style="flex:1">
+            <div style="white-space:pre-wrap">${esc(pr.text)}</div>
+            <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')||'<span class="hint" style="margin:0">カテゴリなし</span>'}</div>
+          </div>
+          <span style="color:var(--accent-ink);font-size:13px;white-space:nowrap">編集 ›</span>
+        </div>
+      </div>`).join('');
+  });
+  wrap.innerHTML = html || '<div class="empty">この条件の練習はありません。</div>';
+}
+/* カテゴリ用の色パレット（順番に割り当て） */
+const PRAC_PALETTE=['#0fb5a6','#38bdf8','#f59e0b','#a78bfa','#f472b6','#34d399','#fb7185','#60a5fa','#facc15','#c084fc'];
+function pracCatColor(name, idx){ return PRAC_PALETTE[idx % PRAC_PALETTE.length]; }
+/* その月のカテゴリ割合を積み上げバー＋内訳で描画 */
+function renderPracRatio(days){
+  const count={}; let total=0; let uncat=0;
+  days.forEach(d=>practices[d].forEach(pr=>{
+    const cs=pr.cats||[];
+    if(!cs.length){ uncat++; return; }
+    cs.forEach(c=>{ count[c]=(count[c]||0)+1; total++; });
+  }));
+  if(!total && !uncat) return '';
+  const cats=Object.keys(count).sort((a,b)=>count[b]-count[a]);
+  const denom=total; // カテゴリ延べ数を分母に（1練習に複数カテゴリ可のため）
+  const seg=cats.map((c,i)=>`<i style="width:${(count[c]/denom*100).toFixed(1)}%;background:${pracCatColor(c,i)}"></i>`).join('');
+  const rows=cats.map((c,i)=>{
+    const pct=Math.round(count[c]/denom*100);
+    return `<div style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:7px">
+      <span style="width:11px;height:11px;border-radius:3px;background:${pracCatColor(c,i)};flex-shrink:0"></span>
+      <span style="flex:1">${esc(c)}</span>
+      <span style="color:var(--ink-soft)">${count[c]}回</span>
+      <span style="color:var(--accent-ink);font-weight:700;min-width:38px;text-align:right">${pct}%</span>
+    </div>`;
+  }).join('');
+  const uncatLine = uncat ? `<div class="hint" style="margin:6px 0 0">＋ カテゴリなしの練習 ${uncat}件</div>` : '';
+  return `<div class="card pad" style="margin-bottom:6px">
+    <div style="font-weight:700;font-size:13px;margin-bottom:10px">カテゴリの割合</div>
+    <div class="ratiobar">${seg||'<i style="width:100%;background:var(--edge)"></i>'}</div>
+    <div style="margin-top:12px">${rows||'<div class="hint" style="margin:0">カテゴリ付きの練習がありません。</div>'}</div>
+    ${uncatLine}
+    <div class="hint" style="text-align:left;margin-top:8px">練習にどのカテゴリが多いか＝偏りが一目で分かります（延べ回数ベース）。</div>
+  </div>`;
+}
+/* ---- 練習編集モーダル ---- */
+let pmTarget=null;      // {d, idx}
+let pmCats=[];          // 編集中のカテゴリ
+window.openPracEdit=(d,idx)=>{
+  const pr=(practices[d]||[])[idx]; if(!pr)return;
+  pmTarget={d,idx};
+  pmCats=(pr.cats||[]).slice();
+  $('#pmDate').value=d;
+  $('#pmText').value=pr.text||'';
+  renderPmCatTags();
+  $('#pracModal').classList.add('open');
+  document.body.classList.add('modal-lock');
+};
+window.closePracModal=()=>{ $('#pracModal').classList.remove('open'); document.body.classList.remove('modal-lock'); pmTarget=null; };
+function renderPmCatTags(){
+  const box=$('#pmCatTags');
+  const all=[...new Set([...practiceCats,...pmCats])].sort();
+  if(!all.length){ box.innerHTML='<span class="hint" style="margin:0">下でカテゴリを作れます。</span>'; return; }
+  box.innerHTML=all.map(c=>`<span class="tag${pmCats.includes(c)?' on':''}" onclick="tglPmCat('${esc(c)}')">${esc(c)}</span>`).join('');
+}
+window.tglPmCat=c=>{ const i=pmCats.indexOf(c); if(i>=0)pmCats.splice(i,1); else pmCats.push(c); renderPmCatTags(); };
+window.pmAddCat=()=>{
+  const el=$('#pmNewCat'); const v=(el.value||'').trim(); if(!v)return;
+  if(!practiceCats.includes(v))practiceCats.push(v);
+  if(!pmCats.includes(v))pmCats.push(v);
+  el.value=''; save(); renderPmCatTags();
+};
+window.savePracEdit=()=>{
+  if(!pmTarget)return;
+  const text=$('#pmText').value.trim();
+  if(!text){toast('練習メニューを入力してください');return;}
+  const newD=$('#pmDate').value||pmTarget.d;
+  const {d,idx}=pmTarget;
+  const pr=practices[d][idx];
+  pr.text=text; pr.cats=pmCats.slice();
+  // 日付が変わった場合は移動
+  if(newD!==d){
+    practices[d].splice(idx,1);
+    if(!practices[d].length)delete practices[d];
+    if(!practices[newD])practices[newD]=[];
+    practices[newD].push(pr);
+  }
+  closePracModal(); save(); renderPracHist(); toast('練習を更新しました');
+};
+window.deletePracEdit=()=>{
+  if(!pmTarget)return;
+  if(!confirm('この練習を削除しますか？'))return;
+  const {d,idx}=pmTarget;
+  practices[d].splice(idx,1);
+  if(!practices[d].length)delete practices[d];
+  closePracModal(); save(); renderPracHist(); toast('練習を削除しました');
+};
 window.onRecvDateChange=()=>{
   recvSelDate=$('#recvDate').value||todayStr();
   renderNotelessUI();
