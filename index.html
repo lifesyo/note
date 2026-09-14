@@ -86,8 +86,6 @@ h2.section{font-size:12px;color:var(--ink-faint);font-weight:700;margin:24px 2px
 .today .sub{font-size:12.5px;color:rgba(255,255,255,.72);margin-top:12px;position:relative;letter-spacing:.02em}
 .bar{height:7px;background:rgba(255,255,255,.18);border-radius:999px;overflow:hidden;margin-top:14px;position:relative}
 .bar>i{display:block;height:100%;background:linear-gradient(90deg,#2dd4bf,#38bdf8);border-radius:999px;transition:width .6s cubic-bezier(.4,0,.2,1)}
-.ratiobar{display:flex;height:14px;border-radius:999px;overflow:hidden;background:var(--edge-soft)}
-.ratiobar>i{display:block;height:100%}
 
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:var(--r);
   padding:15px 16px;font-size:15px;font-weight:650;font-family:inherit;cursor:pointer;width:100%;
@@ -561,7 +559,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091406';
+const APP_VER='2026091407';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -916,7 +914,23 @@ function renderPracRatio(days){
   if(!total && !uncat) return '';
   const cats=Object.keys(count).sort((a,b)=>count[b]-count[a]);
   const denom=total; // カテゴリ延べ数を分母に（1練習に複数カテゴリ可のため）
-  const seg=cats.map((c,i)=>`<i style="width:${(count[c]/denom*100).toFixed(1)}%;background:${pracCatColor(c,i)}"></i>`).join('');
+  // ドーナツ円グラフ（SVG・stroke-dasharrayで各セグメントを描く）
+  const R=52, C=2*Math.PI*R, SW=26;
+  let acc=0;
+  const arcs=cats.map((c,i)=>{
+    const frac=count[c]/denom;
+    const len=frac*C;
+    const seg=`<circle cx="70" cy="70" r="${R}" fill="none" stroke="${pracCatColor(c,i)}" stroke-width="${SW}" stroke-dasharray="${len.toFixed(2)} ${(C-len).toFixed(2)}" stroke-dashoffset="${(-acc).toFixed(2)}" transform="rotate(-90 70 70)"></circle>`;
+    acc+=len;
+    return seg;
+  }).join('');
+  const donut = cats.length ? `<div style="display:flex;justify-content:center;margin:4px 0 14px">
+    <svg viewBox="0 0 140 140" style="width:150px;height:150px">
+      <circle cx="70" cy="70" r="${R}" fill="none" stroke="var(--edge-soft)" stroke-width="${SW}"></circle>
+      ${arcs}
+      <text x="70" y="64" text-anchor="middle" style="font-size:22px;font-weight:800;fill:var(--ink)">${total}</text>
+      <text x="70" y="82" text-anchor="middle" style="font-size:11px;fill:var(--ink-faint)">延べ回数</text>
+    </svg></div>` : '';
   const rows=cats.map((c,i)=>{
     const pct=Math.round(count[c]/denom*100);
     return `<div style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:7px">
@@ -929,8 +943,8 @@ function renderPracRatio(days){
   const uncatLine = uncat ? `<div class="hint" style="margin:6px 0 0">＋ カテゴリなしの練習 ${uncat}件</div>` : '';
   return `<div class="card pad" style="margin-bottom:6px">
     <div style="font-weight:700;font-size:13px;margin-bottom:10px">カテゴリの割合</div>
-    <div class="ratiobar">${seg||'<i style="width:100%;background:var(--edge)"></i>'}</div>
-    <div style="margin-top:12px">${rows||'<div class="hint" style="margin:0">カテゴリ付きの練習がありません。</div>'}</div>
+    ${donut}
+    <div>${rows||'<div class="hint" style="margin:0">カテゴリ付きの練習がありません。</div>'}</div>
     ${uncatLine}
     <div class="hint" style="text-align:left;margin-top:8px">練習にどのカテゴリが多いか＝偏りが一目で分かります（延べ回数ベース）。</div>
   </div>`;
