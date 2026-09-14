@@ -75,6 +75,15 @@ body{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
 .view.active{display:block;animation:fade .25s ease}
 @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 h2.section{font-size:12px;color:var(--ink-faint);font-weight:700;margin:24px 2px 10px;letter-spacing:.04em}
+.daygrp{margin-top:20px}
+.daygrp:first-child{margin-top:6px}
+.dayhd{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.dayhd .dd{font-size:14px;font-weight:800;color:var(--accent-ink);background:var(--accent-wash);padding:5px 12px;border-radius:999px;white-space:nowrap}
+.dayhd .ct{font-size:11.5px;color:var(--ink-faint)}
+.dayhd .ln{flex:1;height:1px;background:var(--edge)}
+.daybody{border-left:2px solid var(--accent-wash);padding-left:12px}
+.pcard{transition:box-shadow .15s,transform .15s}
+.pcard.dragging{box-shadow:0 8px 24px -6px rgba(15,140,160,.5);transform:scale(1.02);opacity:.95;position:relative;z-index:5}
 
 .card{background:var(--card);border:1px solid var(--edge);border-radius:var(--r);box-shadow:var(--shadow-sm)}
 .card.pad{padding:18px}
@@ -603,7 +612,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091410';
+const APP_VER='2026091412';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -927,14 +936,17 @@ function renderPracHist(){
   // カテゴリの割合（その月・偏り可視化）
   $('#pracRatio').innerHTML = renderPracRatio(days);
   // 本文
+  const canDrag = (pracHistFilter===null); // 絞り込み中は並び替え無効
   let html='';
   days.forEach(d=>{
     let list=practices[d].map((pr,i)=>({pr,i}));
     if(pracHistFilter) list=list.filter(x=>(x.pr.cats||[]).includes(pracHistFilter));
     if(!list.length)return;
-    html+=`<h2 class="section" style="margin-top:18px">${fmt(d)}（${['日','月','火','水','木','金','土'][new Date(d).getDay()]}）</h2>`;
-    html+=list.map(({pr,i})=>`
-      <div class="card pad" style="margin-bottom:8px" onclick="openPracEdit('${d}',${i})">
+    const wd=['日','月','火','水','木','金','土'][new Date(d).getDay()];
+    const cards=list.map(({pr,i})=>`
+      <div class="card pad pcard" style="margin-bottom:8px" data-d="${d}" data-idx="${i}" data-src="normal"
+           onclick="pcardClick('normal','${d}',${i})"
+           ontouchstart="pcardTouchStart(event,'normal','${d}',${i})" ontouchmove="pcardTouchMove(event)" ontouchend="pcardTouchEnd(event)">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
           <div style="flex:1">
             <div style="white-space:pre-wrap">${esc(pr.text)}</div>
@@ -943,7 +955,12 @@ function renderPracHist(){
           <span style="color:var(--accent-ink);font-size:13px;white-space:nowrap">編集 ›</span>
         </div>
       </div>`).join('');
+    html+=`<div class="daygrp">
+      <div class="dayhd"><span class="dd">${fmt(d)}（${wd}）</span><span class="ct">${list.length}件</span><span class="ln"></span></div>
+      <div class="daybody" data-d="${d}" data-src="normal" data-nodrag="${canDrag?'':'1'}">${cards}</div>
+    </div>`;
   });
+  if(canDrag && days.length){ html=`<p class="hint" style="margin:0 2px 6px">カードを長押しすると同じ日の中で並び替えできます。</p>`+html; }
   wrap.innerHTML = html || '<div class="empty">この条件の練習はありません。</div>';
 }
 /* カテゴリ用の色パレット（順番に割り当て） */
@@ -1100,9 +1117,11 @@ function renderAmHist(){
   ratio.innerHTML=renderPracRatio(days, amPractices);
   let html='';
   days.forEach(d=>{
-    html+=`<h2 class="section" style="margin-top:18px">${fmt(d)}（${['日','月','火','水','木','金','土'][new Date(d).getDay()]}）</h2>`;
-    html+=amPractices[d].map((pr,i)=>`
-      <div class="card pad" style="margin-bottom:8px" onclick="openAmEdit('${d}',${i})">
+    const wd=['日','月','火','水','木','金','土'][new Date(d).getDay()];
+    const cards=amPractices[d].map((pr,i)=>`
+      <div class="card pad pcard" style="margin-bottom:8px" data-d="${d}" data-idx="${i}" data-src="am"
+           onclick="pcardClick('am','${d}',${i})"
+           ontouchstart="pcardTouchStart(event,'am','${d}',${i})" ontouchmove="pcardTouchMove(event)" ontouchend="pcardTouchEnd(event)">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
           <div style="flex:1">
             <div style="white-space:pre-wrap">${esc(pr.text)}</div>
@@ -1111,10 +1130,81 @@ function renderAmHist(){
           <span style="color:var(--accent-ink);font-size:13px;white-space:nowrap">編集 ›</span>
         </div>
       </div>`).join('');
+    html+=`<div class="daygrp">
+      <div class="dayhd"><span class="dd">${fmt(d)}（${wd}）</span><span class="ct">${amPractices[d].length}件</span><span class="ln"></span></div>
+      <div class="daybody" data-d="${d}" data-src="am">${cards}</div>
+    </div>`;
   });
+  if(days.length){ html=`<p class="hint" style="margin:0 2px 6px">カードを長押しすると同じ日の中で並び替えできます。</p>`+html; }
   wrap.innerHTML=html;
 }
 window.openAmEdit=(d,idx)=>{ openPracEditSrc(amPractices,'am',d,idx); };
+
+/* ---- 練習カード：タップ＝編集 / 長押し＝同じ日の中でD&D並び替え ---- */
+let dragState=null; // {src,d,idx,el,longTimer,started,startY,fired}
+function pcardSrcObj(src){ return src==='am'?amPractices:practices; }
+window.pcardClick=(src,d,idx)=>{
+  // touchで処理済みならスキップ（PCクリックのみ）
+  if(dragState && dragState.fired){ dragState=null; return; }
+  if(dragState){ dragState=null; }
+  if(src==='am') openAmEdit(d,idx); else openPracEdit(d,idx);
+};
+window.pcardTouchStart=(ev,src,d,idx)=>{
+  const el=ev.currentTarget;
+  const body=el.parentElement;
+  if(body && body.getAttribute('data-nodrag')==='1'){ dragState=null; return; } // 絞り込み中は無効
+  dragState={src,d,idx,el,started:false,fired:false,startY:ev.touches[0].clientY,moved:false};
+  dragState.longTimer=setTimeout(()=>{
+    if(!dragState)return;
+    dragState.started=true; dragState.fired=true;
+    el.classList.add('dragging');
+    if(navigator.vibrate)navigator.vibrate(20);
+  },450);
+};
+window.pcardTouchMove=(ev)=>{
+  if(!dragState)return;
+  const y=ev.touches[0].clientY;
+  if(!dragState.started){
+    // 長押し前に大きく動いたらドラッグ開始をキャンセル（スクロール優先）
+    if(Math.abs(y-dragState.startY)>10){ clearTimeout(dragState.longTimer); dragState=null; }
+    return;
+  }
+  ev.preventDefault(); // ドラッグ中はスクロール抑制
+  const body=dragState.el.parentElement; // 同じ日のdaybody
+  const cards=[...body.querySelectorAll('.pcard')].filter(c=>c!==dragState.el);
+  let placed=false;
+  for(const c of cards){
+    const r=c.getBoundingClientRect();
+    if(y < r.top + r.height/2){ body.insertBefore(dragState.el,c); placed=true; break; }
+  }
+  if(!placed) body.appendChild(dragState.el);
+};
+window.pcardTouchEnd=(ev)=>{
+  if(!dragState){ return; }
+  clearTimeout(dragState.longTimer);
+  if(!dragState.started){ // ただのタップ → clickに任せる
+    return;
+  }
+  ev.preventDefault();
+  dragState.el.classList.remove('dragging');
+  // 新しい並び順をDOMから読み取ってデータへ反映
+  const body=dragState.el.parentElement;
+  const d=body.getAttribute('data-d');
+  const src=body.getAttribute('data-src');
+  const obj=pcardSrcObj(src);
+  const newOrder=[...body.querySelectorAll('.pcard')].map(c=>+c.getAttribute('data-idx'));
+  const arr=obj[d];
+  if(arr){
+    const reordered=newOrder.map(i=>arr[i]);
+    obj[d]=reordered;
+  }
+  const st=dragState; dragState=null;
+  const sy=window.scrollY;
+  save();
+  if(src==='am') renderAmHist(); else renderPracHist();
+  window.scrollTo(0,sy);
+  toast('順番を変えました');
+};
 
 /* ---- 練習編集モーダル ---- */
 let pmTarget=null;      // {d, idx}
@@ -1149,6 +1239,7 @@ window.savePracEdit=()=>{
   if(!pmTarget)return;
   const text=$('#pmText').value.trim();
   if(!text){toast('練習メニューを入力してください');return;}
+  const sy=window.scrollY; // スクロール位置を保持
   const newD=$('#pmDate').value||pmTarget.d;
   const {d,idx,src,view}=pmTarget;
   const pr=src[d][idx];
@@ -1161,16 +1252,19 @@ window.savePracEdit=()=>{
   }
   closePracModal(); save();
   if(view==='am') renderAmHist(); else renderPracHist();
+  window.scrollTo(0,sy); // 編集していた位置に戻す
   toast('更新しました');
 };
 window.deletePracEdit=()=>{
   if(!pmTarget)return;
   if(!confirm('この練習を削除しますか？'))return;
+  const sy=window.scrollY;
   const {d,idx,src,view}=pmTarget;
   src[d].splice(idx,1);
   if(!src[d].length)delete src[d];
   closePracModal(); save();
   if(view==='am') renderAmHist(); else renderPracHist();
+  window.scrollTo(0,sy);
   toast('削除しました');
 };
 window.onRecvDateChange=()=>{
