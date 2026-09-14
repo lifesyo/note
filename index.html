@@ -873,29 +873,46 @@ function balance(p){const c={cog:0,jdg:0,sel:0,exe:0};let t=0;p.notes.forEach(n=
 let attendMonth=null; // 'YYYY-MM' 表示中の月
 function allNoteDates(){
   const s=new Set();
-  players.forEach(p=>p.notes.forEach(n=>s.add(n.d)));   // ノート提出日
-  Object.keys(attendance).forEach(d=>{ const r=attendance[d]; const has=Array.isArray(r)?r.length:Object.keys(r||{}).length; if(has) s.add(d); }); // 出席日
+  players.forEach(p=>p.notes.forEach(n=>s.add(n.d)));   // ノート提出日のみ
   return [...s].sort((a,b)=>a>b?-1:1); // 新しい順
+}
+/* 一覧の列に使う日付：ノート提出日 ＋ 出席日（出席したのに未提出の日も列に出すため） */
+function allDatesForGrid(){
+  const s=new Set();
+  players.forEach(p=>p.notes.forEach(n=>s.add(n.d)));
+  Object.keys(attendance).forEach(d=>{ const r=attendance[d]; const has=Array.isArray(r)?r.length:Object.keys(r||{}).length; if(has) s.add(d); });
+  return [...s].sort((a,b)=>a>b?-1:1);
 }
 function allMonths(){
   const s=new Set();
-  allNoteDates().forEach(d=>s.add(d.slice(0,7)));
+  allDatesForGrid().forEach(d=>s.add(d.slice(0,7)));
+  Object.keys(practices).forEach(d=>{ if(practices[d]&&practices[d].length) s.add(d.slice(0,7)); });
   return [...s].sort((a,b)=>a>b?-1:1); // 新しい順
 }
+/* 一覧グリッドに出す日付（ノート提出日＋出席日） */
 function datesInMonth(ym){
-  return allNoteDates().filter(d=>d.slice(0,7)===ym); // 新しい順
+  return allDatesForGrid().filter(d=>d.slice(0,7)===ym); // 新しい順
 }
-/* ノート提出率 = ○の日数 ÷（○の日 ＋ 出席してたのに未提出だった日）。△(遅れ)は分母分子とも除外 */
+/* 提出率の対象日（ノート提出があった日のみ） */
+function noteDatesInMonth(ym){
+  return allNoteDates().filter(d=>d.slice(0,7)===ym);
+}
+/* ノート提出率 = ○の日数 ÷（○の日 ＋ 出席してたのに未提出だった日）。△(遅れ)は分母分子とも除外。
+   対象は「ノート提出があった日」＋「出席してたのに未提出だった日」だけ。単なる出席日は無関係。 */
 function noteRateInMonth(p,ym){
-  const dates=datesInMonth(ym);
   let num=0, den=0;
-  dates.forEach(d=>{
-    const st=statusOf(p,d);          // ontime / excused / late / none
-    if(st==='ontime'||st==='excused'){ num++; den++; }   // 当日提出・正当な理由の遅れ→分子分母
-    else if(st==='late'){ /* 理由なしの遅れは除外 */ }
-    else { // none（未提出）：その日出席していたら分母に入れる
-      if(isPresent(p.id,d)) den++;
-    }
+  // ノート提出があった日を評価
+  noteDatesInMonth(ym).forEach(d=>{
+    const st=statusOf(p,d);
+    if(st==='ontime'||st==='excused'){ num++; den++; }
+    else if(st==='late'){ /* 遅れは除外 */ }
+    // none はここでは扱わない（下でまとめて）
+  });
+  // 出席してたのに、その日ノート未提出だった日を分母に加える（提出すべきだった日）
+  Object.keys(attendance).forEach(d=>{
+    if(d.slice(0,7)!==ym)return;
+    const st=statusOf(p,d);
+    if(st==='none' && isPresent(p.id,d)) den++;
   });
   if(!den)return null;
   return Math.round(num/den*100);
@@ -948,15 +965,33 @@ function renderAttend(){
       if(at==='present')cls+=' present';
       else if(at==='late')cls+=' late';
       if(alert)cls+=' alert';
-      return `<td><span class="${cls}" style="color:${STCOL[st]}" onclick="cycleStatus('${p.id}','${d}')" oncontextmenu="event.preventDefault();openCellMenu('${p.id}','${d}');return false;" ontouchstart="cellTouchStart('${p.id}','${d}')" ontouchend="cellTouchEnd()" ontouchmove="cellTouchEnd()">${STMARK[st]}</span></td>`;
+      return `<td><span class="${cls}" style="color:${STCOL[st]}" data-id="${p.id}" data-d="${d}" onclick="cellClick(event,'${p.id}','${d}')" oncontextmenu="event.preventDefault();openCellMenu('${p.id}','${d}');return false;" ontouchstart="cellTouchStart(event,'${p.id}','${d}')" ontouchend="cellTouchEnd(event,'${p.id}','${d}')" ontouchmove="cellTouchMove()">${STMARK[st]}</span></td>`;
     }).join('');
     return `<tr><td class="anm">${esc(p.name)}</td><td class="art">${rateHtml}</td>${cells}</tr>`;
   }).join('');
   wrap.innerHTML=`<table class="attend">${head}${rows}</table>`;
 }
+/* セル操作：短タップ＝循環、長押し＝メニュー。touchとclickの競合を防ぐ */
+let cellPressTimer=null, cellLongFired=false, cellTouchActive=false, cellMoved=false;
+window.cellTouchStart=(ev,id,d)=>{
+  cellTouchActive=true; cellLongFired=false; cellMoved=false;
+  cellPressTimer=setTimeout(()=>{ cellLongFired=true; openCellMenu(id,d); }, 500);
+};
+window.cellTouchMove=()=>{ cellMoved=true; if(cellPressTimer){clearTimeout(cellPressTimer);cellPressTimer=null;} };
+window.cellTouchEnd=(ev,id,d)=>{
+  if(cellPressTimer){clearTimeout(cellPressTimer);cellPressTimer=null;}
+  ev.preventDefault(); // 後続のclickを抑制（二重発火防止）
+  if(cellLongFired || cellMoved)return; // 長押し or スワイプは循環しない
+  cycleStatus(id,d);
+  // touch後のghost clickを無効化するため少しフラグを残す
+  setTimeout(()=>{cellTouchActive=false;},400);
+};
+window.cellClick=(ev,id,d)=>{
+  if(cellTouchActive)return; // touchで処理済みならclickは無視（PCのみ発火）
+  cycleStatus(id,d);
+};
 /* セルをタップ：○→△→×→○ と循環（◎excusedは長押しメニューから） */
 window.cycleStatus=(id,d)=>{
-  if(cellLongPressed){ cellLongPressed=false; return; } // 長押し直後のクリックは無視
   const p=players.find(x=>x.id===id);if(!p)return;
   let cur=statusOf(p,d); // ontime/excused/late/none
   if(cur==='excused')cur='late'; // 循環上は△と同じ位置
@@ -987,13 +1022,6 @@ function setCellStatus(id,d,st){
   p.notes.sort((a,b)=>a.d<b.d?-1:1);
   save();renderAttend();
 }
-/* 長押し検出 */
-let cellPressTimer=null, cellLongPressed=false;
-window.cellTouchStart=(id,d)=>{
-  cellLongPressed=false;
-  cellPressTimer=setTimeout(()=>{ cellLongPressed=true; openCellMenu(id,d); }, 500);
-};
-window.cellTouchEnd=()=>{ if(cellPressTimer){clearTimeout(cellPressTimer);cellPressTimer=null;} };
 /* 4択メニュー */
 window.openCellMenu=(id,d)=>{
   const p=players.find(x=>x.id===id);if(!p)return;
