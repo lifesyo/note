@@ -28,6 +28,8 @@
   --r-sm:10px;--r:14px;--r-lg:18px;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input,textarea{-webkit-user-select:text;user-select:text}
 html,body{margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
   color:var(--ink);background:var(--paper);line-height:1.65;-webkit-font-smoothing:antialiased;
@@ -520,7 +522,7 @@ function statusOf(p,dateStr){
   const n=p.notes.find(x=>x.d===dateStr);
   return noteStatus(n);
 }
-const STMARK={ontime:'○',late:'△',excused:'○',none:'×'};
+const STMARK={ontime:'◎',late:'△',excused:'○',none:'×'};
 const STCOL={ontime:'var(--ok)',late:'var(--warn)',excused:'#1f9fd4',none:'var(--ink-faint)'};
 
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800);}
@@ -790,28 +792,41 @@ window.onRecvDateChange=()=>{
   $('#quickpick').innerHTML=players.map(p=>recvRow(p)).join('');
 };
 function stopScan(){if(scanning){scanning.stop().then(()=>scanning.clear()).catch(()=>{});scanning=null;}}
-function onScan(txt){const p=players.find(x=>x.id===txt)||players.find(x=>x.name===txt);if(p)markSubmitted(p.id);}
+function onScan(txt){
+  const p=players.find(x=>x.id===txt)||players.find(x=>x.name===txt);
+  if(!p)return;
+  if(statusOf(p,recvSelDate)!=='none'){ toast(p.name+' さんは記録済みです'); return; }
+  setCellStatus(p.id,recvSelDate,'ontime');
+  toast(p.name+' さんの提出を記録しました');
+  renderRecvDone();
+  $('#quickpick').innerHTML=players.map(pp=>recvRow(pp)).join('');
+}
 function recvRow(p){
-  const st=statusOf(p,recvSelDate);
-  const label={ontime:'○ 提出済み',late:'△ 遅れて提出',none:'タップで提出記録'}[st];
-  return `<div class="prow" onclick="markSubmitted('${p.id}')">
+  const st=statusOf(p,recvSelDate); // none/ontime/excused/late
+  const label={
+    none:'タップで提出記録',
+    ontime:'タップで「正当な理由」に',
+    excused:'タップで「遅れて提出」に',
+    late:'タップで「未提出」に戻す'
+  }[st];
+  const mark={none:'記録', ontime:'◎ 当日', excused:'○ 正当', late:'△ 遅れ'}[st];
+  return `<div class="prow" onclick="cycleRecv('${p.id}')">
     <div class="avatar">${initials(p.name)}</div>
     <div class="meta"><div class="nm">${p.name}</div><div class="last">${label}</div></div>
-    <div class="cnt" style="color:${STCOL[st]}">${st==='none'?'記録':STMARK[st]}</div></div>`;
+    <div class="cnt" style="color:${st==='none'?'var(--ink-faint)':STCOL[st]}">${mark}</div></div>`;
 }
 function renderRecvDone(){
-  const done=players.filter(p=>p.notes.some(n=>n.d===recvSelDate));
+  const done=players.filter(p=>{const s=statusOf(p,recvSelDate);return s!=='none';});
   const isToday=recvSelDate===todayStr();
   const lbl=isToday?'本日':fmt(recvSelDate);
-  $('#recvDone').innerHTML=done.length?`<div class="banner" style="color:var(--ok);background:var(--accent-wash);border-color:var(--accent)">${lbl}の提出済み: ${done.map(p=>p.name).join('、')}</div>`:'';
+  $('#recvDone').innerHTML=done.length?`<div class="banner" style="color:var(--ok);background:var(--accent-wash);border-color:var(--accent)">${lbl}の提出: ${done.length}名</div>`:'';
 }
-window.markSubmitted=id=>{
+/* ノート受付：タップで 未提出→○当日→◎正当→△遅れ→未提出 と循環 */
+window.cycleRecv=id=>{
   const p=players.find(x=>x.id===id);if(!p)return;
-  if(p.notes.some(n=>n.d===recvSelDate)){toast(p.name+' さんは記録済みです');return;}
-  // 提出日=選択日、logged=実際に記録した日。両者が違えば△（遅れて提出）になる
-  p.notes.push({d:recvSelDate,logged:todayStr(),s:'',k:[],kw:[],t:''});
-  p.notes.sort((a,b)=>a.d<b.d?-1:1);
-  save();toast(p.name+' さんの提出を記録しました');
+  const cur=statusOf(p,recvSelDate); // none/ontime/excused/late
+  const next={none:'ontime',ontime:'excused',excused:'late',late:'none'}[cur];
+  setCellStatus(id,recvSelDate,next);
   renderRecvDone();
   $('#quickpick').innerHTML=players.map(pp=>recvRow(pp)).join('');
 };
@@ -1027,7 +1042,7 @@ window.openCellMenu=(id,d)=>{
   const p=players.find(x=>x.id===id);if(!p)return;
   $('#cellMenuTitle').textContent=`${p.name} ・ ${fmt(d)}`;
   const opts=[
-    {st:'ontime', mark:'○', col:'var(--ok)', label:'当日提出'},
+    {st:'ontime', mark:'◎', col:'var(--ok)', label:'当日提出'},
     {st:'excused',mark:'○', col:'#1f9fd4', label:'正当な理由で遅れ（○扱い）'},
     {st:'late',   mark:'△', col:'var(--warn)',label:'遅れて提出（率から除外）'},
     {st:'none',   mark:'×', col:'var(--ink-faint)',label:'未提出'},
