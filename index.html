@@ -415,15 +415,57 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
 
 <!-- PRACTICE HISTORY -->
 <section class="view" id="v-prac">
-  <h2 class="section">練習の記録</h2>
-  <div class="monthnav">
-    <button onclick="shiftPracMonth(-1)" aria-label="前の月">‹</button>
-    <span id="pracMonthLabel">—</span>
-    <button onclick="shiftPracMonth(1)" aria-label="次の月">›</button>
+  <div class="segbar">
+    <button class="seg on" id="pseg-normal" onclick="switchPracView('normal')">通常練習</button>
+    <button class="seg" id="pseg-am" onclick="switchPracView('am')">朝練</button>
   </div>
-  <div id="pracFilter" class="tags" style="margin-bottom:12px"></div>
-  <div id="pracRatio"></div>
-  <div id="pracHist"></div>
+
+  <!-- 通常練習 -->
+  <div id="prac-normal">
+    <div class="monthnav">
+      <button onclick="shiftPracMonth(-1)" aria-label="前の月">‹</button>
+      <span id="pracMonthLabel">—</span>
+      <button onclick="shiftPracMonth(1)" aria-label="次の月">›</button>
+    </div>
+    <div id="pracFilter" class="tags" style="margin-bottom:12px"></div>
+    <div id="pracRatio"></div>
+    <div id="pracHist"></div>
+  </div>
+
+  <!-- 朝練 -->
+  <div id="prac-am" style="display:none">
+    <div class="field" style="margin-bottom:12px">
+      <label>朝練日</label>
+      <input type="date" id="amDate" onchange="onAmDateChange()">
+    </div>
+    <h2 class="section">朝練の出席（タップで 出席→遅刻→欠席）</h2>
+    <div style="display:flex;gap:10px;margin-bottom:12px">
+      <button class="btn soft" onclick="amAttnAll(true)">全員出席</button>
+      <button class="btn soft" onclick="amAttnAll(false)">全員リセット</button>
+    </div>
+    <div id="amAttnList" class="plist" style="margin-bottom:4px"></div>
+    <h2 class="section">朝練メニュー</h2>
+    <div class="field">
+      <textarea id="amText" rows="2" placeholder="例：シュート200本、ハンドリング"></textarea>
+    </div>
+    <div class="field">
+      <label>カテゴリ（タップで切替）</label>
+      <div id="amCatTags" class="tags"></div>
+      <div class="addrow" style="margin-top:8px">
+        <input type="text" id="amNewCat" placeholder="新しいカテゴリを作る" onkeydown="if(event.key==='Enter')amAddCat()">
+        <button class="btn soft" onclick="amAddCat()">追加</button>
+      </div>
+    </div>
+    <button class="btn primary" onclick="addAmPractice()">この朝練を記録する</button>
+
+    <div class="monthnav" style="margin-top:22px">
+      <button onclick="shiftAmMonth(-1)" aria-label="前の月">‹</button>
+      <span id="amMonthLabel">—</span>
+      <button onclick="shiftAmMonth(1)" aria-label="次の月">›</button>
+    </div>
+    <div id="amRatio"></div>
+    <div id="amHist"></div>
+  </div>
 </section>
 
 <!-- SETTINGS -->
@@ -553,13 +595,15 @@ let players=[];
 let teamName='東淀中学校 女子バスケ部';
 let attendance={}; // { 'YYYY-MM-DD': { playerId: 'present'|'late' } }。旧形式（配列=全員present）も読める
 let practices={};  // { 'YYYY-MM-DD': [ {text:'...', cats:['シュート',...]} ] }
+let amPractices={}; // 朝練の練習記録（practicesと同形式）
+let amAttendance={}; // 朝練の出席（attendanceと同形式）
 let noteless={};   // { 'YYYY-MM-DD': true }。ノート提出を求めない日＝提出率の分母から除外
 let practiceCats=[]; // 作成済みカテゴリ名のリスト
 let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091409';
+const APP_VER='2026091410';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -633,6 +677,8 @@ function subscribe(uid){
       if(d.teamName)teamName=d.teamName;
       if(d.attendance&&typeof d.attendance==='object')attendance=d.attendance;
       if(d.practices&&typeof d.practices==='object')practices=d.practices;
+      if(d.amPractices&&typeof d.amPractices==='object')amPractices=d.amPractices;
+      if(d.amAttendance&&typeof d.amAttendance==='object')amAttendance=d.amAttendance;
       if(d.noteless&&typeof d.noteless==='object')noteless=d.noteless;
       if(Array.isArray(d.practiceCats))practiceCats=d.practiceCats;
       if(d.seq)seq=d.seq;
@@ -650,7 +696,7 @@ async function save(){
   if(!currentUser)return;
   setSync('syncing');
   try{
-    await setDoc(doc(db,'noteiq',currentUser.uid),{players,teamName,attendance,practices,noteless,practiceCats,seq,updatedAt:new Date().toISOString()});
+    await setDoc(doc(db,'noteiq',currentUser.uid),{players,teamName,attendance,practices,amPractices,amAttendance,noteless,practiceCats,seq,updatedAt:new Date().toISOString()});
     setSync('synced');
   }catch(e){console.error(e);setSync('error');toast('⚠️ 保存に失敗しました');}
 }
@@ -673,7 +719,7 @@ window.go=v=>{
   if(v==='cards')renderCards();
   if(v==='recv')startReception();
   if(v==='attend')renderAttend();
-  if(v==='prac')renderPracHist();
+  if(v==='prac'){ if(pracView==='am') renderAmAll(); else renderPracHist(); }
   if(v==='settings')renderUser();
 };
 
@@ -904,13 +950,14 @@ function renderPracHist(){
 const PRAC_PALETTE=['#0fb5a6','#38bdf8','#f59e0b','#a78bfa','#f472b6','#34d399','#fb7185','#60a5fa','#facc15','#c084fc'];
 function pracCatColor(name, idx){ return PRAC_PALETTE[idx % PRAC_PALETTE.length]; }
 /* その月のカテゴリ割合を積み上げバー＋内訳で描画 */
-function renderPracRatio(days){
+function renderPracRatio(days, src){
+  src = src || practices;
   // 1日=1回。カテゴリはその日に登場したかどうか（日単位で重複カウントしない）
   const count={};        // カテゴリ→登場した項目数
   let totalDays=0;       // 練習した日数（中央表示用）
   let uncatItems=0;      // カテゴリが1つも付いていない項目数
   days.forEach(d=>{
-    const items=practices[d]||[];
+    const items=src[d]||[];
     if(!items.length)return;
     totalDays++;
     items.forEach(pr=>{
@@ -959,19 +1006,131 @@ function renderPracRatio(days){
     <div class="hint" style="text-align:left;margin-top:8px">追加した練習カテゴリの割合です。どのカテゴリが多いか＝偏りが一目で分かります。</div>
   </div>`;
 }
+/* ========== 朝練 ========== */
+let pracView='normal';
+let amSelDate=todayStr();
+let amSelCats=[];
+let amHistMonth=null;
+window.switchPracView=v=>{
+  pracView=v;
+  $('#pseg-normal').classList.toggle('on', v==='normal');
+  $('#pseg-am').classList.toggle('on', v==='am');
+  $('#prac-normal').style.display = v==='normal'?'block':'none';
+  $('#prac-am').style.display = v==='am'?'block':'none';
+  if(v==='normal') renderPracHist();
+  else renderAmAll();
+};
+function renderAmAll(){
+  const dp=$('#amDate'); if(dp&&!dp.value)dp.value=amSelDate;
+  renderAmAttn(); renderAmCatTags(); renderAmHist();
+}
+window.onAmDateChange=()=>{ amSelDate=$('#amDate').value||todayStr(); renderAmAttn(); };
+function amAttnStatus(id,d){
+  const rec=amAttendance[d];
+  if(!rec)return 'absent';
+  if(Array.isArray(rec))return rec.includes(id)?'present':'absent';
+  return rec[id]||'absent';
+}
+function setAmAttn(id,d,st){
+  let rec=amAttendance[d];
+  if(Array.isArray(rec)){ const o={}; rec.forEach(x=>o[x]='present'); rec=o; amAttendance[d]=o; }
+  if(!rec){ rec={}; amAttendance[d]=rec; }
+  if(st==='absent'){ delete rec[id]; } else { rec[id]=st; }
+  if(!Object.keys(rec).length)delete amAttendance[d];
+}
+window.cycleAmAttn=id=>{
+  const cur=amAttnStatus(id,amSelDate);
+  const next={absent:'present',present:'late',late:'absent'}[cur];
+  setAmAttn(id,amSelDate,next); save(); renderAmAttn();
+};
+window.amAttnAll=(present)=>{
+  players.forEach(p=>setAmAttn(p.id,amSelDate, present?'present':'absent'));
+  save(); renderAmAttn();
+};
+function renderAmAttn(){
+  if(!players.length){ $('#amAttnList').innerHTML='<div class="empty">選手がいません。</div>'; return; }
+  const MARK={present:'出席 ✓',late:'遅刻 △',absent:'欠席'};
+  const COL={present:'var(--ok)',late:'var(--warn)',absent:'var(--ink-faint)'};
+  $('#amAttnList').innerHTML=players.map(p=>{
+    const s=amAttnStatus(p.id,amSelDate);
+    return `<div class="prow" onclick="cycleAmAttn('${p.id}')">
+      <div class="avatar">${initials(p.name)}</div>
+      <div class="meta"><div class="nm">${esc(p.name)}</div></div>
+      <div class="cnt" style="color:${COL[s]}">${MARK[s]}</div></div>`;
+  }).join('');
+}
+function renderAmCatTags(){
+  const box=$('#amCatTags');
+  if(!practiceCats.length){ box.innerHTML='<span class="hint" style="margin:0">カテゴリがありません。下で作成してください。</span>'; return; }
+  box.innerHTML=practiceCats.map(c=>`<span class="tag${amSelCats.includes(c)?' on':''}" onclick="tglAmCat('${esc(c)}')">${esc(c)}</span>`).join('');
+}
+window.tglAmCat=c=>{ const i=amSelCats.indexOf(c); if(i>=0)amSelCats.splice(i,1); else amSelCats.push(c); renderAmCatTags(); };
+window.amAddCat=()=>{
+  const el=$('#amNewCat'); const v=(el.value||'').trim(); if(!v)return;
+  if(!practiceCats.includes(v))practiceCats.push(v);
+  if(!amSelCats.includes(v))amSelCats.push(v);
+  el.value=''; save(); renderAmCatTags();
+};
+window.addAmPractice=()=>{
+  const text=$('#amText').value.trim();
+  if(!text){toast('朝練メニューを入力してください');return;}
+  if(!amPractices[amSelDate])amPractices[amSelDate]=[];
+  amPractices[amSelDate].push({text,cats:amSelCats.slice()});
+  $('#amText').value=''; amSelCats=[];
+  save(); renderAmCatTags(); renderAmHist(); toast('朝練を記録しました');
+};
+function amMonths(){
+  const s=new Set();
+  Object.keys(amPractices).forEach(d=>{ if(amPractices[d]&&amPractices[d].length) s.add(d.slice(0,7)); });
+  return [...s].sort((a,b)=>a>b?-1:1);
+}
+window.shiftAmMonth=dir=>{
+  const months=amMonths(); if(!months.length)return;
+  let i=months.indexOf(amHistMonth); if(i<0)i=0;
+  i=Math.min(months.length-1,Math.max(0,i-dir));
+  amHistMonth=months[i]; renderAmHist();
+};
+function renderAmHist(){
+  const wrap=$('#amHist'); const lbl=$('#amMonthLabel'); const ratio=$('#amRatio');
+  const months=amMonths();
+  if(!months.length){ wrap.innerHTML='<div class="empty">まだ朝練が記録されていません。上で記録しましょう。</div>'; lbl.textContent='—'; ratio.innerHTML=''; return; }
+  if(!amHistMonth || !months.includes(amHistMonth)) amHistMonth=months[0];
+  lbl.textContent=monthLabel(amHistMonth);
+  const days=Object.keys(amPractices).filter(d=>d.slice(0,7)===amHistMonth && amPractices[d] && amPractices[d].length).sort((a,b)=>a>b?-1:1);
+  ratio.innerHTML=renderPracRatio(days, amPractices);
+  let html='';
+  days.forEach(d=>{
+    html+=`<h2 class="section" style="margin-top:18px">${fmt(d)}（${['日','月','火','水','木','金','土'][new Date(d).getDay()]}）</h2>`;
+    html+=amPractices[d].map((pr,i)=>`
+      <div class="card pad" style="margin-bottom:8px" onclick="openAmEdit('${d}',${i})">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+          <div style="flex:1">
+            <div style="white-space:pre-wrap">${esc(pr.text)}</div>
+            <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')||'<span class="hint" style="margin:0">カテゴリなし</span>'}</div>
+          </div>
+          <span style="color:var(--accent-ink);font-size:13px;white-space:nowrap">編集 ›</span>
+        </div>
+      </div>`).join('');
+  });
+  wrap.innerHTML=html;
+}
+window.openAmEdit=(d,idx)=>{ openPracEditSrc(amPractices,'am',d,idx); };
+
 /* ---- 練習編集モーダル ---- */
 let pmTarget=null;      // {d, idx}
 let pmCats=[];          // 編集中のカテゴリ
-window.openPracEdit=(d,idx)=>{
-  const pr=(practices[d]||[])[idx]; if(!pr)return;
-  pmTarget={d,idx};
+window.openPracEdit=(d,idx)=>{ openPracEditSrc(practices,'normal',d,idx); };
+function openPracEditSrc(src, view, d, idx){
+  const pr=(src[d]||[])[idx]; if(!pr)return;
+  pmTarget={d,idx,src,view};
   pmCats=(pr.cats||[]).slice();
+  $('#pmTitle').textContent = view==='am' ? '朝練を編集' : '練習を編集';
   $('#pmDate').value=d;
   $('#pmText').value=pr.text||'';
   renderPmCatTags();
   $('#pracModal').classList.add('open');
   document.body.classList.add('modal-lock');
-};
+}
 window.closePracModal=()=>{ $('#pracModal').classList.remove('open'); document.body.classList.remove('modal-lock'); pmTarget=null; };
 function renderPmCatTags(){
   const box=$('#pmCatTags');
@@ -991,25 +1150,28 @@ window.savePracEdit=()=>{
   const text=$('#pmText').value.trim();
   if(!text){toast('練習メニューを入力してください');return;}
   const newD=$('#pmDate').value||pmTarget.d;
-  const {d,idx}=pmTarget;
-  const pr=practices[d][idx];
+  const {d,idx,src,view}=pmTarget;
+  const pr=src[d][idx];
   pr.text=text; pr.cats=pmCats.slice();
-  // 日付が変わった場合は移動
   if(newD!==d){
-    practices[d].splice(idx,1);
-    if(!practices[d].length)delete practices[d];
-    if(!practices[newD])practices[newD]=[];
-    practices[newD].push(pr);
+    src[d].splice(idx,1);
+    if(!src[d].length)delete src[d];
+    if(!src[newD])src[newD]=[];
+    src[newD].push(pr);
   }
-  closePracModal(); save(); renderPracHist(); toast('練習を更新しました');
+  closePracModal(); save();
+  if(view==='am') renderAmHist(); else renderPracHist();
+  toast('更新しました');
 };
 window.deletePracEdit=()=>{
   if(!pmTarget)return;
   if(!confirm('この練習を削除しますか？'))return;
-  const {d,idx}=pmTarget;
-  practices[d].splice(idx,1);
-  if(!practices[d].length)delete practices[d];
-  closePracModal(); save(); renderPracHist(); toast('練習を削除しました');
+  const {d,idx,src,view}=pmTarget;
+  src[d].splice(idx,1);
+  if(!src[d].length)delete src[d];
+  closePracModal(); save();
+  if(view==='am') renderAmHist(); else renderPracHist();
+  toast('削除しました');
 };
 window.onRecvDateChange=()=>{
   recvSelDate=$('#recvDate').value||todayStr();
