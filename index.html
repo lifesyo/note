@@ -359,7 +359,7 @@ table.attend .art span{font-size:10px;color:var(--ink-faint)}
     <span id="monthLabel">—</span>
     <button onclick="shiftMonth(1)" aria-label="次の月">›</button>
   </div>
-  <p class="hint" style="text-align:left">○=その日に提出 / △=遅れて提出 / ×=未提出。枠色は出席状況（<b style="color:var(--ok)">緑=出席</b> / <b style="color:var(--warn)">橙=遅刻</b> / <b style="color:var(--err)">赤=出席したのに未提出</b>）。セルをタップで提出状況を修正できます。</p>
+  <p class="hint" style="text-align:left">◎=当日提出 / ○=正当な理由で遅れ / △=遅れて提出 / ×=未提出。枠色は出席状況（<b style="color:var(--ok)">緑=出席</b> / <b style="color:var(--warn)">橙=遅刻</b> / <b style="color:var(--err)">赤=出席したのに未提出</b>）。タップで循環、長押しで詳細メニュー。</p>
   <div id="attendWrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch"></div>
   <h2 class="section" style="margin-top:24px">AI分析用にエクスポート</h2>
   <p class="hint" style="text-align:left">全員の記録を書き出します。コピーしてクロードやChatGPTに貼ると、成長過程を分析してもらえます。</p>
@@ -967,10 +967,12 @@ function renderAttend(){
   if(!attendMonth || !months.includes(attendMonth)) attendMonth=months[0];
   lbl.textContent=monthLabel(attendMonth);
   const dates=datesInMonth(attendMonth); // 新しい順
-  const head=`<tr><th class="anm">選手</th><th class="art">提出率</th>${dates.map(d=>`<th>${(+d.split('-')[2])}日</th>`).join('')}</tr>`;
+  const head=`<tr><th class="anm">選手</th><th class="art">出席率</th><th class="art">提出率</th>${dates.map(d=>`<th>${(+d.split('-')[2])}日</th>`).join('')}</tr>`;
   const rows=players.map(p=>{
     const rate=noteRateInMonth(p,attendMonth);
     const rateHtml = rate===null ? '<span style="color:var(--ink-faint)">—</span>' : `<b>${rate}</b><span>%</span>`;
+    const arate=attendRateInMonth(p,attendMonth);
+    const arateHtml = arate===null ? '<span style="color:var(--ink-faint)">—</span>' : `<b>${arate}</b><span>%</span>`;
     const cells=dates.map(d=>{
       const st=statusOf(p,d);
       const at=attnStatus(p.id,d); // present/late/absent
@@ -982,7 +984,7 @@ function renderAttend(){
       if(alert)cls+=' alert';
       return `<td><span class="${cls}" style="color:${STCOL[st]}" data-id="${p.id}" data-d="${d}" onclick="cellClick(event,'${p.id}','${d}')" oncontextmenu="event.preventDefault();openCellMenu('${p.id}','${d}');return false;" ontouchstart="cellTouchStart(event,'${p.id}','${d}')" ontouchend="cellTouchEnd(event,'${p.id}','${d}')" ontouchmove="cellTouchMove()">${STMARK[st]}</span></td>`;
     }).join('');
-    return `<tr><td class="anm">${esc(p.name)}</td><td class="art">${rateHtml}</td>${cells}</tr>`;
+    return `<tr><td class="anm">${esc(p.name)}</td><td class="art">${arateHtml}</td><td class="art">${rateHtml}</td>${cells}</tr>`;
   }).join('');
   wrap.innerHTML=`<table class="attend">${head}${rows}</table>`;
 }
@@ -1035,7 +1037,17 @@ function setCellStatus(id,d,st){
     else{p.notes.push({d,logged:todayStr(),excused:true,s:'',k:[],kw:[],t:''});}
   }
   p.notes.sort((a,b)=>a.d<b.d?-1:1);
-  save();renderAttend();
+  save();
+  refreshCurrentView();
+}
+/* 今表示している画面を再描画（メニュー・循環の反映用） */
+function refreshCurrentView(){
+  const attendActive=$('#v-attend').classList.contains('active');
+  const recvActive=$('#v-recv').classList.contains('active');
+  const detailActive=$('#v-detail').classList.contains('active');
+  if(attendActive)renderAttend();
+  if(recvActive && recvMode==='note'){ renderRecvDone(); $('#quickpick').innerHTML=players.map(pp=>recvRow(pp)).join(''); }
+  if(detailActive && detailPlayerId)openDetail(detailPlayerId);
 }
 /* 4択メニュー */
 window.openCellMenu=(id,d)=>{
@@ -1112,7 +1124,9 @@ window.copyExport=async()=>{
   }
 };
 function renderPlayers(){$('#playerList').innerHTML=players.map(p=>prow(p,false)).join('');}
+let detailPlayerId=null;
 window.openDetail=id=>{
+  detailPlayerId=id;
   const p=players.find(x=>x.id===id);go('detail');
   document.querySelectorAll('nav button').forEach(b=>b.classList.remove('on'));$('#nav-players').classList.add('on');
   if(!p.notes.length){
