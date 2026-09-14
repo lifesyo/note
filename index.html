@@ -559,7 +559,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091407';
+const APP_VER='2026091408';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -905,15 +905,24 @@ const PRAC_PALETTE=['#0fb5a6','#38bdf8','#f59e0b','#a78bfa','#f472b6','#34d399',
 function pracCatColor(name, idx){ return PRAC_PALETTE[idx % PRAC_PALETTE.length]; }
 /* その月のカテゴリ割合を積み上げバー＋内訳で描画 */
 function renderPracRatio(days){
-  const count={}; let total=0; let uncat=0;
-  days.forEach(d=>practices[d].forEach(pr=>{
-    const cs=pr.cats||[];
-    if(!cs.length){ uncat++; return; }
-    cs.forEach(c=>{ count[c]=(count[c]||0)+1; total++; });
-  }));
-  if(!total && !uncat) return '';
+  // 1日=1回。カテゴリはその日に登場したかどうか（日単位で重複カウントしない）
+  const count={};        // カテゴリ→登場した日数
+  let totalDays=0;       // 練習した日数
+  let uncatDays=0;       // カテゴリが1つも付いていない日数
+  days.forEach(d=>{
+    const items=practices[d]||[];
+    if(!items.length)return;
+    totalDays++;
+    const dayCats=new Set();
+    items.forEach(pr=>(pr.cats||[]).forEach(c=>dayCats.add(c)));
+    if(!dayCats.size){ uncatDays++; return; }
+    dayCats.forEach(c=>{ count[c]=(count[c]||0)+1; });
+  });
+  if(!totalDays) return '';
   const cats=Object.keys(count).sort((a,b)=>count[b]-count[a]);
-  const denom=total; // カテゴリ延べ数を分母に（1練習に複数カテゴリ可のため）
+  // 円グラフと％は「カテゴリ延べ登場日数」を分母に（合計100%で視覚と一致）。中央には実練習日数を表示
+  const sumCat=cats.reduce((s,c)=>s+count[c],0);
+  const denom=sumCat||1;
   // ドーナツ円グラフ（SVG・stroke-dasharrayで各セグメントを描く）
   const R=52, C=2*Math.PI*R, SW=26;
   let acc=0;
@@ -928,25 +937,25 @@ function renderPracRatio(days){
     <svg viewBox="0 0 140 140" style="width:150px;height:150px">
       <circle cx="70" cy="70" r="${R}" fill="none" stroke="var(--edge-soft)" stroke-width="${SW}"></circle>
       ${arcs}
-      <text x="70" y="64" text-anchor="middle" style="font-size:22px;font-weight:800;fill:var(--ink)">${total}</text>
-      <text x="70" y="82" text-anchor="middle" style="font-size:11px;fill:var(--ink-faint)">延べ回数</text>
+      <text x="70" y="64" text-anchor="middle" style="font-size:22px;font-weight:800;fill:var(--ink)">${totalDays}</text>
+      <text x="70" y="82" text-anchor="middle" style="font-size:11px;fill:var(--ink-faint)">練習日</text>
     </svg></div>` : '';
   const rows=cats.map((c,i)=>{
     const pct=Math.round(count[c]/denom*100);
     return `<div style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:7px">
       <span style="width:11px;height:11px;border-radius:3px;background:${pracCatColor(c,i)};flex-shrink:0"></span>
       <span style="flex:1">${esc(c)}</span>
-      <span style="color:var(--ink-soft)">${count[c]}回</span>
+      <span style="color:var(--ink-soft)">${count[c]}日</span>
       <span style="color:var(--accent-ink);font-weight:700;min-width:38px;text-align:right">${pct}%</span>
     </div>`;
   }).join('');
-  const uncatLine = uncat ? `<div class="hint" style="margin:6px 0 0">＋ カテゴリなしの練習 ${uncat}件</div>` : '';
+  const uncatLine = uncatDays ? `<div class="hint" style="margin:6px 0 0">＋ カテゴリなしの練習日 ${uncatDays}日</div>` : '';
   return `<div class="card pad" style="margin-bottom:6px">
     <div style="font-weight:700;font-size:13px;margin-bottom:10px">カテゴリの割合</div>
     ${donut}
     <div>${rows||'<div class="hint" style="margin:0">カテゴリ付きの練習がありません。</div>'}</div>
     ${uncatLine}
-    <div class="hint" style="text-align:left;margin-top:8px">練習にどのカテゴリが多いか＝偏りが一目で分かります（延べ回数ベース）。</div>
+    <div class="hint" style="text-align:left;margin-top:8px">その月に何日どのカテゴリを練習したか＝偏りが一目で分かります（1日＝1回）。</div>
   </div>`;
 }
 /* ---- 練習編集モーダル ---- */
