@@ -231,6 +231,14 @@ table.attend .art span{font-size:10px;color:var(--ink-faint)}
 .amark.late{border-color:var(--warn)}
 .amark.excused-cell{border-color:#1f9fd4}
 .amark.alert{border-color:var(--err);background:rgba(226,104,95,.12)}
+.cell2{display:inline-flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;padding:3px 4px;border-radius:6px;line-height:1}
+.cell2:active{background:var(--paper-2)}
+.cell2 .at{font-size:11px;font-weight:700}
+.cell2 .nt{font-size:16px;font-weight:700}
+.cell2.alert{background:rgba(226,104,95,.12);box-shadow:0 0 0 1.5px var(--err) inset}
+table.attend th.dcol{font-variant-numeric:tabular-nums}
+.leg{display:flex;flex-wrap:wrap;gap:10px 16px;margin:2px 4px 12px;font-size:11.5px;color:var(--ink-soft)}
+.leg b{font-weight:700}
 .cellopt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--paper-2);border:1px solid var(--edge);border-radius:12px;padding:14px;font-family:inherit;font-size:15px;color:var(--ink);cursor:pointer}
 .cellopt:active{background:var(--card)}
 .monthnav{display:flex;align-items:center;justify-content:center;gap:18px;margin:2px 0 10px}
@@ -513,7 +521,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091402';
+const APP_VER='2026091403';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -999,7 +1007,7 @@ function renderAttend(){
   if(!attendMonth || !months.includes(attendMonth)) attendMonth=months[0];
   lbl.textContent=monthLabel(attendMonth);
   const dates=datesInMonth(attendMonth); // 新しい順
-  const head=`<tr><th class="anm">選手</th><th class="art">出席率</th><th class="art">提出率</th>${dates.map(d=>`<th>${(+d.split('-')[2])}日</th>`).join('')}</tr>`;
+  const head=`<tr><th class="anm">選手</th><th class="art">出席率</th><th class="art">提出率</th>${dates.map(d=>`<th class="dcol">${(+d.split('-')[2])}日</th>`).join('')}</tr>`;
   const rows=players.map(p=>{
     const rate=noteRateInMonth(p,attendMonth);
     const rateHtml = rate===null ? '<span style="color:var(--ink-faint)">—</span>' : `<b>${rate}</b><span>%</span>`;
@@ -1009,16 +1017,19 @@ function renderAttend(){
       const st=statusOf(p,d);
       const at=attnStatus(p.id,d); // present/late/absent
       const cameToTraining=(at==='present'||at==='late');
-      const alert = cameToTraining && st==='none'; // 出席(遅刻含む)なのに未提出＝要注意
-      let cls='amark';
-      if(at==='present')cls+=' present';
-      else if(at==='late')cls+=' late';
-      if(alert)cls+=' alert';
-      return `<td><span class="${cls}" style="color:${STCOL[st]}" data-id="${p.id}" data-d="${d}" onclick="cellClick(event,'${p.id}','${d}')" oncontextmenu="event.preventDefault();openCellMenu('${p.id}','${d}');return false;" ontouchstart="cellTouchStart(event,'${p.id}','${d}')" ontouchend="cellTouchEnd(event,'${p.id}','${d}')" ontouchmove="cellTouchMove()">${STMARK[st]}</span></td>`;
+      const isNoteless=!!noteless[d];
+      const alert = cameToTraining && st==='none' && !isNoteless; // 出席なのに未提出＝要注意（ノートなし日は除く）
+      // 上段：出席
+      const atMark = at==='present'?'✓' : at==='late'?'△' : '−';
+      const atCol  = at==='present'?'var(--ok)' : at==='late'?'var(--warn)' : 'var(--ink-faint)';
+      // 下段：提出（ノートなし日は − 表記）
+      const ntMark = isNoteless ? '−' : STMARK[st];
+      const ntCol  = isNoteless ? 'var(--ink-faint)' : STCOL[st];
+      return `<td><span class="cell2${alert?' alert':''}" data-id="${p.id}" data-d="${d}" onclick="cellClick(event,'${p.id}','${d}')" oncontextmenu="event.preventDefault();openCellMenu('${p.id}','${d}');return false;" ontouchstart="cellTouchStart(event,'${p.id}','${d}')" ontouchend="cellTouchEnd(event,'${p.id}','${d}')" ontouchmove="cellTouchMove()"><span class="at" style="color:${atCol}">${atMark}</span><span class="nt" style="color:${ntCol}">${ntMark}</span></span></td>`;
     }).join('');
     return `<tr><td class="anm">${esc(p.name)}</td><td class="art">${arateHtml}</td><td class="art">${rateHtml}</td>${cells}</tr>`;
   }).join('');
-  wrap.innerHTML=`<table class="attend">${head}${rows}</table>`;
+  wrap.innerHTML=`<div class="leg"><span><b>上＝出席：</b>✓出席 △遅刻 −欠席</span><span><b>下＝提出：</b>◎当日 ○正当 △遅れ ×未提出 −なし</span></div><table class="attend">${head}${rows}</table>`;
 }
 /* セル操作：短タップ＝循環、長押し＝メニュー。touchとclickの競合を防ぐ */
 let cellPressTimer=null, cellLongFired=false, cellTouchActive=false, cellMoved=false;
@@ -1042,6 +1053,7 @@ window.cellClick=(ev,id,d)=>{
 /* セルをタップ：○→△→×→○ と循環（◎excusedは長押しメニューから） */
 window.cycleStatus=(id,d)=>{
   const p=players.find(x=>x.id===id);if(!p)return;
+  if(noteless[d]){ toast('ノート提出なしの日です（長押しで変更）'); return; }
   let cur=statusOf(p,d); // ontime/excused/late/none
   if(cur==='excused')cur='late'; // 循環上は△と同じ位置
   const next={ontime:'late',late:'none',none:'ontime'}[cur];
@@ -1084,8 +1096,10 @@ function refreshCurrentView(){
   if(detailActive && detailPlayerId)openDetail(detailPlayerId);
 }
 /* 4択メニュー */
+let cellMenuDate=null;
 window.openCellMenu=(id,d)=>{
   const p=players.find(x=>x.id===id);if(!p)return;
+  cellMenuDate=d;
   $('#cellMenuTitle').textContent=`${p.name} ・ ${fmt(d)}`;
   const opts=[
     {st:'ontime', mark:'◎', col:'var(--ok)', label:'当日提出'},
@@ -1093,13 +1107,20 @@ window.openCellMenu=(id,d)=>{
     {st:'late',   mark:'△', col:'var(--warn)',label:'遅れて提出（率から除外）'},
     {st:'none',   mark:'×', col:'var(--ink-faint)',label:'未提出'},
   ];
+  const nl=!!noteless[d];
+  const nlBtn=`<button class="cellopt" style="border-color:var(--accent)" onclick="toggleNotelessDate('${d}')"><span style="color:var(--accent-ink);font-size:20px;font-weight:700;min-width:24px">−</span><span>${nl?'ノート提出ありに戻す':'この日はノート提出なし（率から除外）'}</span></button>`;
   $('#cellMenuOpts').innerHTML=opts.map(o=>
     `<button class="cellopt" onclick="pickCellStatus('${id}','${d}','${o.st}')"><span style="color:${o.col};font-size:20px;font-weight:700;min-width:24px">${o.mark}</span><span>${o.label}</span></button>`
-  ).join('');
+  ).join('')+nlBtn;
   $('#cellMenu').classList.add('open');
   document.body.classList.add('modal-lock');
 };
 window.pickCellStatus=(id,d,st)=>{ closeCellMenu(); setCellStatus(id,d,st); };
+window.toggleNotelessDate=(d)=>{
+  if(noteless[d]){ delete noteless[d]; toast('ノート提出ありに戻しました'); }
+  else{ noteless[d]=true; toast('この日はノート提出なしにしました'); }
+  closeCellMenu(); save(); refreshCurrentView();
+};
 window.closeCellMenu=()=>{ $('#cellMenu').classList.remove('open'); document.body.classList.remove('modal-lock'); };
 
 /* ---------- AI分析用エクスポート ---------- */
