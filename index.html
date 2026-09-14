@@ -612,7 +612,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091412';
+const APP_VER='2026091413';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1209,9 +1209,11 @@ window.pcardTouchEnd=(ev)=>{
 /* ---- 練習編集モーダル ---- */
 let pmTarget=null;      // {d, idx}
 let pmCats=[];          // 編集中のカテゴリ
+let pmScrollY=0;        // モーダルを開いた時点のスクロール位置
 window.openPracEdit=(d,idx)=>{ openPracEditSrc(practices,'normal',d,idx); };
 function openPracEditSrc(src, view, d, idx){
   const pr=(src[d]||[])[idx]; if(!pr)return;
+  pmScrollY=window.scrollY; // fixed化される前に保存
   pmTarget={d,idx,src,view};
   pmCats=(pr.cats||[]).slice();
   $('#pmTitle').textContent = view==='am' ? '朝練を編集' : '練習を編集';
@@ -1239,7 +1241,6 @@ window.savePracEdit=()=>{
   if(!pmTarget)return;
   const text=$('#pmText').value.trim();
   if(!text){toast('練習メニューを入力してください');return;}
-  const sy=window.scrollY; // スクロール位置を保持
   const newD=$('#pmDate').value||pmTarget.d;
   const {d,idx,src,view}=pmTarget;
   const pr=src[d][idx];
@@ -1250,21 +1251,22 @@ window.savePracEdit=()=>{
     if(!src[newD])src[newD]=[];
     src[newD].push(pr);
   }
+  const sy=pmScrollY;
   closePracModal(); save();
   if(view==='am') renderAmHist(); else renderPracHist();
-  window.scrollTo(0,sy); // 編集していた位置に戻す
+  requestAnimationFrame(()=>window.scrollTo(0,sy)); // fixed解除後に復元
   toast('更新しました');
 };
 window.deletePracEdit=()=>{
   if(!pmTarget)return;
   if(!confirm('この練習を削除しますか？'))return;
-  const sy=window.scrollY;
   const {d,idx,src,view}=pmTarget;
   src[d].splice(idx,1);
   if(!src[d].length)delete src[d];
+  const sy=pmScrollY;
   closePracModal(); save();
   if(view==='am') renderAmHist(); else renderPracHist();
-  window.scrollTo(0,sy);
+  requestAnimationFrame(()=>window.scrollTo(0,sy));
   toast('削除しました');
 };
 window.onRecvDateChange=()=>{
