@@ -483,6 +483,20 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
   <div class="card pad" id="userCard" style="margin-bottom:14px"></div>
   <h2 class="section">チーム名</h2>
   <div class="card pad"><div class="krow"><input type="text" id="teamName" placeholder="チーム名"><button class="btn soft" onclick="saveTeam()">保存</button></div></div>
+
+  <h2 class="section">ノートを一括取り込み</h2>
+  <div class="card pad">
+    <p class="hint" style="margin:0 0 10px">文字起こししたノートをJSONで貼り付けて、名前で選手に自動振り分けします。</p>
+    <div class="field">
+      <textarea id="importJson" rows="5" placeholder='{"entries":[{"name":"みこ","date":"2026-09-14","body":"…","viewpoints":["認知"],"keywords":["リバウンド"],"teacher":""}]}'></textarea>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn soft" onclick="showImportFormat()">形式を見る</button>
+      <button class="btn primary" onclick="parseImport()" style="flex:1">内容を確認</button>
+    </div>
+    <div id="importPreview" style="margin-top:12px"></div>
+  </div>
+
   <h2 class="section">　</h2>
   <button class="btn danger" onclick="doLogout()">ログアウト</button>
   <p class="hint" style="text-align:center;margin-top:18px;opacity:.6">Note IQ <span id="appVer"></span></p>
@@ -612,7 +626,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091413';
+const APP_VER='2026091414';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1769,6 +1783,77 @@ window.deletePlayer=id=>{
   save();renderCards();toast(`${p.name} さんを削除しました`);
 };
 window.saveTeam=()=>{const t=$('#teamName').value.trim();if(!t)return;teamName=t;$('#teamTag').textContent=t;save();toast('チーム名を保存しました');};
+
+/* ========== ノート一括取り込み ========== */
+const VP_MAP={ '認知':'cog','判断':'jdg','選択':'sel','実行':'exe','cog':'cog','jdg':'jdg','sel':'sel','exe':'exe' };
+let importParsed=null; // 確認済みデータ
+function normName(s){ return (s||'').trim().replace(/\s+/g,'').toLowerCase(); }
+function findPlayerByName(name){
+  const n=normName(name);
+  if(!n)return null;
+  let hit=players.find(p=>normName(p.name)===n);      // 完全一致
+  if(hit)return hit;
+  hit=players.find(p=>normName(p.name).includes(n)||n.includes(normName(p.name))); // 部分一致
+  return hit||null;
+}
+window.showImportFormat=()=>{
+  $('#importJson').value=JSON.stringify({entries:[
+    {name:"みこ",date:todayStr(),body:"今日の練習で気づいたこと。ディフェンスで相手の動きを見て判断できた。",viewpoints:["認知","判断"],keywords:["ディフェンス","判断"],teacher:"よく見えてたね"},
+    {name:"なちか",date:todayStr(),body:"シュートの調子が上がってきた。",viewpoints:["実行"],keywords:["シュート"],teacher:""}
+  ]},null,2);
+  toast('サンプルを入力しました');
+};
+window.parseImport=()=>{
+  const raw=$('#importJson').value.trim();
+  const box=$('#importPreview');
+  if(!raw){ box.innerHTML='<p class="hint" style="margin:0">JSONを貼り付けてください。</p>'; return; }
+  let data;
+  try{ data=JSON.parse(raw); }
+  catch(e){ box.innerHTML=`<div class="banner" style="color:var(--err);background:rgba(226,104,95,.1);border-color:var(--err)">JSONの形式が正しくありません：${esc(e.message)}</div>`; importParsed=null; return; }
+  const entries = Array.isArray(data) ? data : (data.entries||[]);
+  if(!Array.isArray(entries)||!entries.length){ box.innerHTML='<p class="hint" style="margin:0">取り込めるデータが見つかりません。entries配列が必要です。</p>'; importParsed=null; return; }
+  const rows=entries.map((e,i)=>{
+    const name=e.name||e.名前||'';
+    const p=findPlayerByName(name);
+    const date=(e.date||e.日付||todayStr());
+    const vpsRaw=e.viewpoints||e.観点||[];
+    const vps=[...new Set((Array.isArray(vpsRaw)?vpsRaw:[vpsRaw]).map(v=>VP_MAP[v]).filter(Boolean))];
+    const kws=e.keywords||e.キーワード||[];
+    const body=e.body||e.全文||e.本文||'';
+    const teacher=e.teacher||e.先生の一言||'';
+    return {i,name,p,date,vps,kws:Array.isArray(kws)?kws:[],body,teacher, matched:!!p};
+  });
+  importParsed=rows;
+  const okCount=rows.filter(r=>r.matched).length;
+  const ngCount=rows.length-okCount;
+  const list=rows.map(r=>`
+    <div class="card pad" style="margin-bottom:6px;border-color:${r.matched?'var(--edge)':'var(--err)'}">
+      <div style="display:flex;justify-content:space-between;gap:8px">
+        <b>${esc(r.name||'（名前なし）')}</b>
+        <span style="font-size:12px;color:${r.matched?'var(--ok)':'var(--err)'}">${r.matched?'→ '+esc(r.p.name):'該当なし・スキップ'}</span>
+      </div>
+      <div class="hint" style="margin:4px 0 0">${esc(r.date)}｜${r.vps.map(v=>K[v]).join('・')||'観点なし'}${r.kws.length?'｜'+r.kws.map(esc).join('、'):''}</div>
+      <div style="font-size:13px;margin-top:4px;white-space:pre-wrap;max-height:60px;overflow:hidden">${esc(r.body).slice(0,100)}${r.body.length>100?'…':''}</div>
+    </div>`).join('');
+  box.innerHTML=`
+    <div class="banner" style="margin-bottom:10px">取り込み可能 ${okCount}件${ngCount?` ／ 該当なし ${ngCount}件（スキップ）`:''}</div>
+    ${list}
+    ${okCount?`<button class="btn primary" onclick="commitImport()" style="margin-top:8px">${okCount}件を取り込む</button>`:''}`;
+};
+window.commitImport=()=>{
+  if(!importParsed)return;
+  let added=0;
+  importParsed.forEach(r=>{
+    if(!r.matched)return;
+    r.p.notes.push({ d:r.date, logged:r.date, s:r.body, k:r.vps.slice(), kw:r.kws.slice(), t:r.teacher });
+    added++;
+  });
+  if(!added){ toast('取り込める記録がありません'); return; }
+  save();
+  $('#importJson').value=''; $('#importPreview').innerHTML='';
+  importParsed=null;
+  toast(`${added}件のノートを取り込みました`);
+};
 
 window.addEventListener('pagehide',stopScan);
 </script>
