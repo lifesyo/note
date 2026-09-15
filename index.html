@@ -626,7 +626,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091415';
+const APP_VER='2026091416';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -706,6 +706,7 @@ function subscribe(uid){
       if(Array.isArray(d.practiceCats))practiceCats=d.practiceCats;
       if(d.seq)seq=d.seq;
       $('#teamTag').textContent=teamName;
+      if(dedupeEmptyNotes())save(); // 同日の空記録（受付チェックとノートの二重）を掃除
     }else{
       // ドキュメントが一度も作られていない＝本当の初回だけ初期メンバーを入れる
       seedInitial();
@@ -722,6 +723,27 @@ async function save(){
     await setDoc(doc(db,'noteiq',currentUser.uid),{players,teamName,attendance,practices,amPractices,amAttendance,noteless,practiceCats,seq,updatedAt:new Date().toISOString()});
     setSync('synced');
   }catch(e){console.error(e);setSync('error');toast('⚠️ 保存に失敗しました');}
+}
+/* 同じ日に「本文あり」と「空（提出のみ）」が両方ある場合、空の方を削除して1件にまとめる。
+   受付チェックとノート取り込み/手入力が二重になったデータを掃除。戻り値=変更有無 */
+function dedupeEmptyNotes(){
+  let changed=false;
+  const hasContent=n=>!!(n.s||(n.k&&n.k.length)||(n.kw&&n.kw.length)||n.t);
+  players.forEach(p=>{
+    if(!Array.isArray(p.notes))return;
+    const byDate={};
+    p.notes.forEach(n=>{ (byDate[n.d]=byDate[n.d]||[]).push(n); });
+    Object.keys(byDate).forEach(d=>{
+      const list=byDate[d];
+      if(list.length<2)return;
+      const withContent=list.filter(hasContent);
+      if(withContent.length>=1 && withContent.length<list.length){
+        p.notes=p.notes.filter(n=>n.d!==d || hasContent(n)); // 空記録を除去
+        changed=true;
+      }
+    });
+  });
+  return changed;
 }
 function seedInitial(){
   ['あみる','ひなか','ひなた','ここな','りな','ゆり'].forEach(n=>{
@@ -1842,17 +1864,29 @@ window.parseImport=()=>{
 };
 window.commitImport=()=>{
   if(!importParsed)return;
-  let added=0;
+  const today=todayStr();
+  let added=0, merged=0;
   importParsed.forEach(r=>{
     if(!r.matched)return;
-    r.p.notes.push({ d:todayStr(), logged:todayStr(), s:r.body, k:r.vps.slice(), kw:r.kws.slice(), t:r.teacher });
-    added++;
+    const i=r.p.notes.findIndex(n=>n.d===today);
+    if(i>=0){
+      // 受付などで既に今日の記録がある→本文・観点・キーワード・先生の一言を統合（提出ステータスは維持）
+      const n=r.p.notes[i];
+      n.s = r.body || n.s || '';
+      n.k = (r.vps&&r.vps.length)? r.vps.slice() : (n.k||[]);
+      n.kw = (r.kws&&r.kws.length)? r.kws.slice() : (n.kw||[]);
+      n.t = r.teacher || n.t || '';
+      merged++;
+    }else{
+      r.p.notes.push({ d:today, logged:today, s:r.body, k:r.vps.slice(), kw:r.kws.slice(), t:r.teacher });
+      added++;
+    }
   });
-  if(!added){ toast('取り込める記録がありません'); return; }
+  if(!added && !merged){ toast('取り込める記録がありません'); return; }
   save();
   $('#importJson').value=''; $('#importPreview').innerHTML='';
   importParsed=null;
-  toast(`${added}件のノートを取り込みました`);
+  toast(`${added+merged}件のノートを取り込みました`);
 };
 
 window.addEventListener('pagehide',stopScan);
