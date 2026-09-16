@@ -624,24 +624,8 @@ const K={cog:'認知',jdg:'判断',sel:'選択',exe:'実行'};
 const Kcol={cog:'var(--cog)',jdg:'var(--jdg)',sel:'var(--sel)',exe:'var(--exe)'};
 /* ノート本文を観点色でハイライト表示するHTMLを返す。
    n.seg（[{t,k}]）があればそれを使い、なければ素の本文を返す */
-/* 既存ノート（segなし）に、付いている観点タグを使って簡易的にセグメントを生成。
-   本文を文単位（。！？や改行）で分割し、観点タグを順に循環割り当て。AI不使用の簡易版。 */
-function autoSegFromNote(n){
-  const text=(n.s||'').trim();
-  const ks=(n.k||[]).filter(k=>Kcol[k]);
-  if(!text || !ks.length) return null;
-  // 文で分割（区切り文字は残す）
-  const pieces=text.match(/[^。！？!?\n]+[。！？!?\n]?/g) || [text];
-  let ki=0;
-  const seg=pieces.map(pc=>{
-    if(!pc.trim()) return {t:pc, k:''};
-    const k=ks[ki % ks.length]; ki++;
-    return {t:pc, k};
-  });
-  return seg;
-}
 function noteBodyHtml(n){
-  let seg = (Array.isArray(n.seg) && n.seg.length) ? n.seg : autoSegFromNote(n);
+  const seg = (Array.isArray(n.seg) && n.seg.length) ? n.seg : null;
   if(seg && seg.length){
     const parts=seg.map(s=>{
       const t=esc(s.t||'');
@@ -665,7 +649,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091418';
+const APP_VER='2026091419';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
