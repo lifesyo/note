@@ -184,6 +184,14 @@ textarea:focus,input:focus{outline:none;border-color:var(--accent);box-shadow:0 
 .tnote .dt x{cursor:pointer;opacity:.5}
 .tnote .sm{background:var(--card);border:1px solid var(--edge);border-radius:12px;padding:12px;margin-top:5px;box-shadow:var(--shadow)}
 .tnote .sm .txt{font-size:14px;white-space:pre-wrap;word-break:break-word}
+.hl{border-radius:3px;padding:0 1px;box-decoration-break:clone;-webkit-box-decoration-break:clone;border-bottom:2px solid}
+.hl.cog{background:color-mix(in srgb,var(--cog) 16%,transparent);border-color:var(--cog)}
+.hl.jdg{background:color-mix(in srgb,var(--jdg) 16%,transparent);border-color:var(--jdg)}
+.hl.sel{background:color-mix(in srgb,var(--sel) 16%,transparent);border-color:var(--sel)}
+.hl.exe{background:color-mix(in srgb,var(--exe) 16%,transparent);border-color:var(--exe)}
+.hllegend{display:flex;flex-wrap:wrap;gap:8px 12px;margin-top:8px;font-size:11px}
+.hllegend span{display:inline-flex;align-items:center;gap:4px;color:var(--ink-soft)}
+.hllegend i{width:14px;height:8px;border-radius:2px;display:inline-block}
 .tnote .sm .tg{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap;align-items:center}
 .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
 .teacher{font-size:13px;color:var(--accent-ink);background:#eef2f1;border-radius:8px;padding:7px 10px;margin-top:8px}
@@ -614,6 +622,37 @@ const provider = new GoogleAuthProvider();
 /* ---------- state ---------- */
 const K={cog:'認知',jdg:'判断',sel:'選択',exe:'実行'};
 const Kcol={cog:'var(--cog)',jdg:'var(--jdg)',sel:'var(--sel)',exe:'var(--exe)'};
+/* ノート本文を観点色でハイライト表示するHTMLを返す。
+   n.seg（[{t,k}]）があればそれを使い、なければ素の本文を返す */
+/* 既存ノート（segなし）に、付いている観点タグを使って簡易的にセグメントを生成。
+   本文を文単位（。！？や改行）で分割し、観点タグを順に循環割り当て。AI不使用の簡易版。 */
+function autoSegFromNote(n){
+  const text=(n.s||'').trim();
+  const ks=(n.k||[]).filter(k=>Kcol[k]);
+  if(!text || !ks.length) return null;
+  // 文で分割（区切り文字は残す）
+  const pieces=text.match(/[^。！？!?\n]+[。！？!?\n]?/g) || [text];
+  let ki=0;
+  const seg=pieces.map(pc=>{
+    if(!pc.trim()) return {t:pc, k:''};
+    const k=ks[ki % ks.length]; ki++;
+    return {t:pc, k};
+  });
+  return seg;
+}
+function noteBodyHtml(n){
+  let seg = (Array.isArray(n.seg) && n.seg.length) ? n.seg : autoSegFromNote(n);
+  if(seg && seg.length){
+    const parts=seg.map(s=>{
+      const t=esc(s.t||'');
+      return (s.k && Kcol[s.k]) ? `<span class="hl ${s.k}">${t}</span>` : t;
+    }).join('');
+    const used=[...new Set(seg.map(s=>s.k).filter(k=>k&&Kcol[k]))];
+    const legend = used.length ? `<div class="hllegend">${used.map(k=>`<span><i style="background:${Kcol[k]}"></i>${K[k]}</span>`).join('')}</div>` : '';
+    return `<div class="txt">${parts||'（本文なし）'}</div>${legend}`;
+  }
+  return `<div class="txt">${esc(n.s)||'（本文なし）'}</div>`;
+}
 let players=[];
 let teamName='東淀中学校 女子バスケ部';
 let attendance={}; // { 'YYYY-MM-DD': { playerId: 'present'|'late' } }。旧形式（配列=全員present）も読める
@@ -626,7 +665,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091416';
+const APP_VER='2026091418';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1692,7 +1731,7 @@ window.openDetail=id=>{
   const balHtml=['cog','jdg','sel','exe'].map(k=>`<div class="bcol"><div class="track"><i style="height:${bal[k]/maxB*100}%;background:${Kcol[k]}"></i></div><div class="lb" style="color:${Kcol[k]}">${K[k]}</div><div class="vv">${Math.round(bal[k]*100)}%</div></div>`).join('');
   const wt=wordTrend(p);
   const tl=p.notes.slice().reverse().map((n,ri)=>{const realIdx=p.notes.length-1-ri;const empty=!n.s&&!(n.k&&n.k.length)&&!(n.kw&&n.kw.length)&&!n.t;return `<div class="tnote"><div class="dt"><span>${fmt(n.d)}${empty?'（提出のみ・内容未記入）':''}</span><span><x onclick="openNoteModal('${p.id}',${realIdx})" style="margin-right:12px">編集</x><x onclick="delNote('${p.id}',${realIdx})">削除</x></span></div>
-    <div class="sm"><div class="txt">${esc(n.s)||'（本文なし）'}</div>
+    <div class="sm">${noteBodyHtml(n)}
       <div class="tg">${n.k.map(k=>`<span class="dot" style="background:${Kcol[k]}"></span>`).join('')}${n.kw.map(w=>`<span class="wt">${esc(w)}</span>`).join('')}</div>
       ${n.t?`<div class="teacher"><b>先生:</b> ${esc(n.t)}</div>`:''}</div></div>`;}).join('');
   $('#detailBody').innerHTML=`
@@ -1820,8 +1859,13 @@ function findPlayerByName(name){
 }
 window.showImportFormat=()=>{
   $('#importJson').value=JSON.stringify({entries:[
-    {name:"みこ",date:todayStr(),body:"今日の練習で気づいたこと。ディフェンスで相手の動きを見て判断できた。",viewpoints:["認知","判断"],keywords:["ディフェンス","判断"],teacher:"よく見えてたね"},
-    {name:"なちか",date:todayStr(),body:"シュートの調子が上がってきた。",viewpoints:["実行"],keywords:["シュート"],teacher:""}
+    {name:"みこ",segments:[
+      {text:"相手の動きを見て、",viewpoint:"認知"},
+      {text:"どこが空くか判断できた。",viewpoint:"判断"},
+      {text:"だからドライブを選んで、",viewpoint:"選択"},
+      {text:"最後まで決めきった。",viewpoint:"実行"}
+    ],keywords:["ドライブ"],teacher:"よく見えてたね"},
+    {name:"なちか",body:"シュートの調子が上がってきた。",viewpoints:["実行"],keywords:["シュート"],teacher:""}
   ]},null,2);
   toast('サンプルを入力しました');
 };
@@ -1838,12 +1882,21 @@ window.parseImport=()=>{
     const name=e.name||e.名前||'';
     const p=findPlayerByName(name);
     const date=(e.date||e.日付||todayStr());
-    const vpsRaw=e.viewpoints||e.観点||[];
-    const vps=[...new Set((Array.isArray(vpsRaw)?vpsRaw:[vpsRaw]).map(v=>VP_MAP[v]).filter(Boolean))];
+    // segments: [{text,viewpoint}] を受け取る（観点ハイライト用）
+    const segRaw=e.segments||e.セグメント||null;
+    let seg=null, body, vps;
+    if(Array.isArray(segRaw)&&segRaw.length){
+      seg=segRaw.map(s=>({ t:(s.text||s.t||s.文||''), k:VP_MAP[s.viewpoint||s.k||s.観点]||'' })).filter(s=>s.t);
+      body=seg.map(s=>s.t).join('');
+      vps=[...new Set(seg.map(s=>s.k).filter(Boolean))];
+    }else{
+      body=e.body||e.全文||e.本文||'';
+      const vpsRaw=e.viewpoints||e.観点||[];
+      vps=[...new Set((Array.isArray(vpsRaw)?vpsRaw:[vpsRaw]).map(v=>VP_MAP[v]).filter(Boolean))];
+    }
     const kws=e.keywords||e.キーワード||[];
-    const body=e.body||e.全文||e.本文||'';
     const teacher=e.teacher||e.先生の一言||'';
-    return {i,name,p,date,vps,kws:Array.isArray(kws)?kws:[],body,teacher, matched:!!p};
+    return {i,name,p,date,vps,kws:Array.isArray(kws)?kws:[],body,teacher,seg, matched:!!p};
   });
   importParsed=rows;
   const okCount=rows.filter(r=>r.matched).length;
@@ -1876,9 +1929,12 @@ window.commitImport=()=>{
       n.k = (r.vps&&r.vps.length)? r.vps.slice() : (n.k||[]);
       n.kw = (r.kws&&r.kws.length)? r.kws.slice() : (n.kw||[]);
       n.t = r.teacher || n.t || '';
+      if(r.seg&&r.seg.length) n.seg=r.seg.slice(); // 観点ハイライト
       merged++;
     }else{
-      r.p.notes.push({ d:today, logged:today, s:r.body, k:r.vps.slice(), kw:r.kws.slice(), t:r.teacher });
+      const note={ d:today, logged:today, s:r.body, k:r.vps.slice(), kw:r.kws.slice(), t:r.teacher };
+      if(r.seg&&r.seg.length) note.seg=r.seg.slice();
+      r.p.notes.push(note);
       added++;
     }
   });
