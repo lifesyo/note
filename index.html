@@ -359,6 +359,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
     </div>
     <div class="field">
       <label>練習メニュー</label>
+      <div id="menuTplChips" class="tags" style="margin-bottom:8px"></div>
       <textarea id="pracText" rows="2" placeholder="例：3メンでのフィニッシュ、1on1、ハーフコートDF"></textarea>
     </div>
     <div class="field">
@@ -372,6 +373,13 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
     <button class="btn primary" onclick="addPractice()">この練習を記録する</button>
     <h2 class="section">この日の練習</h2>
     <div id="pracList"></div>
+    <h2 class="section">登録メニューの管理</h2>
+    <p class="hint" style="text-align:left;margin-top:0">よく使う練習メニューを登録しておくと、上のチップからタップで呼び出せます。</p>
+    <div class="addrow">
+      <input type="text" id="newMenuTpl" placeholder="登録するメニュー名" onkeydown="if(event.key==='Enter')addMenuTpl()">
+      <button class="btn soft" onclick="addMenuTpl()">登録</button>
+    </div>
+    <div id="menuTplList" style="margin-top:10px"></div>
     <h2 class="section">カテゴリ別の回数（この月）</h2>
     <div id="pracStats"></div>
   </div>
@@ -564,6 +572,16 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
   </div>
 </div>
 
+<!-- メニュー編集モーダル -->
+<div class="modal" id="menuTplModal">
+  <div class="modal-inner">
+    <div class="modal-head"><span>メニューを編集</span><button class="modal-x" onclick="closeMenuTplModal()">×</button></div>
+    <div class="field"><textarea id="menuTplEditText" rows="2"></textarea></div>
+    <button class="btn primary" onclick="saveMenuTplEdit()">保存する</button>
+    <button class="btn ghost" onclick="closeMenuTplModal()" style="margin-top:8px">やめる</button>
+  </div>
+</div>
+
 <!-- 練習編集モーダル -->
 <div class="modal" id="pracModal">
   <div class="modal-inner">
@@ -645,11 +663,12 @@ let amPractices={}; // 朝練の練習記録（practicesと同形式）
 let amAttendance={}; // 朝練の出席（attendanceと同形式）
 let noteless={};   // { 'YYYY-MM-DD': true }。ノート提出を求めない日＝提出率の分母から除外
 let practiceCats=[]; // 作成済みカテゴリ名のリスト
+let menuTemplates=[]; // 登録した練習メニュー（テンプレート文字列の配列）
 let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091419';
+const APP_VER='2026091420';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -727,6 +746,7 @@ function subscribe(uid){
       if(d.amAttendance&&typeof d.amAttendance==='object')amAttendance=d.amAttendance;
       if(d.noteless&&typeof d.noteless==='object')noteless=d.noteless;
       if(Array.isArray(d.practiceCats))practiceCats=d.practiceCats;
+      if(Array.isArray(d.menuTemplates))menuTemplates=d.menuTemplates;
       if(d.seq)seq=d.seq;
       $('#teamTag').textContent=teamName;
       if(dedupeEmptyNotes())save(); // 同日の空記録（受付チェックとノートの二重）を掃除
@@ -743,7 +763,7 @@ async function save(){
   if(!currentUser)return;
   setSync('syncing');
   try{
-    await setDoc(doc(db,'noteiq',currentUser.uid),{players,teamName,attendance,practices,amPractices,amAttendance,noteless,practiceCats,seq,updatedAt:new Date().toISOString()});
+    await setDoc(doc(db,'noteiq',currentUser.uid),{players,teamName,attendance,practices,amPractices,amAttendance,noteless,practiceCats,menuTemplates,seq,updatedAt:new Date().toISOString()});
     setSync('synced');
   }catch(e){console.error(e);setSync('error');toast('⚠️ 保存に失敗しました');}
 }
@@ -899,6 +919,55 @@ window.addCat=()=>{
   $('#newCat').value='';
   save();renderPracCatTags();
 };
+/* ---- 登録メニュー（テンプレート） ---- */
+function renderMenuTplChips(){
+  const box=$('#menuTplChips'); if(!box)return;
+  if(!menuTemplates.length){ box.innerHTML='<span class="hint" style="margin:0">登録メニューはまだありません（下で登録できます）。</span>'; return; }
+  box.innerHTML=menuTemplates.map((t,i)=>`<span class="tag" style="color:var(--accent-ink);border-color:var(--edge)" onclick="applyMenuTpl(${i})">${esc(t)}</span>`).join('');
+}
+window.applyMenuTpl=(i)=>{
+  const t=menuTemplates[i]; if(t==null)return;
+  const ta=$('#pracText');
+  ta.value = ta.value.trim() ? (ta.value.replace(/\s*$/,'')+'\n'+t) : t; // 既存本文があれば改行して追記
+  ta.focus();
+};
+function renderMenuTplList(){
+  const box=$('#menuTplList'); if(!box)return;
+  if(!menuTemplates.length){ box.innerHTML='<div class="empty">登録メニューはありません。</div>'; return; }
+  box.innerHTML=menuTemplates.map((t,i)=>`
+    <div class="card pad" style="margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+        <div style="flex:1;white-space:pre-wrap">${esc(t)}</div>
+        <span class="noterow-del" style="color:var(--accent-ink)" onclick="openMenuTplEdit(${i})">編集</span>
+        <span class="noterow-del" style="color:var(--exe)" onclick="delMenuTpl(${i})">削除</span>
+      </div>
+    </div>`).join('');
+}
+window.addMenuTpl=()=>{
+  const el=$('#newMenuTpl'); const v=(el.value||'').trim(); if(!v)return;
+  if(!menuTemplates.includes(v))menuTemplates.push(v);
+  el.value='';
+  save(); renderMenuTplChips(); renderMenuTplList(); toast('メニューを登録しました');
+};
+window.delMenuTpl=(i)=>{
+  if(!confirm('この登録メニューを削除しますか？'))return;
+  menuTemplates.splice(i,1);
+  save(); renderMenuTplChips(); renderMenuTplList();
+};
+let menuTplEditIdx=null;
+window.openMenuTplEdit=(i)=>{
+  menuTplEditIdx=i;
+  $('#menuTplEditText').value=menuTemplates[i]||'';
+  $('#menuTplModal').classList.add('open');
+  document.body.classList.add('modal-lock');
+};
+window.closeMenuTplModal=()=>{ $('#menuTplModal').classList.remove('open'); document.body.classList.remove('modal-lock'); menuTplEditIdx=null; };
+window.saveMenuTplEdit=()=>{
+  if(menuTplEditIdx==null)return;
+  const v=$('#menuTplEditText').value.trim(); if(!v){toast('内容を入力してください');return;}
+  menuTemplates[menuTplEditIdx]=v;
+  closeMenuTplModal(); save(); renderMenuTplChips(); renderMenuTplList(); toast('メニューを更新しました');
+};
 function renderPracCatTags(){
   const box=$('#pracCatTags');
   if(!practiceCats.length){ box.innerHTML='<span class="hint" style="margin:0">カテゴリがありません。下で作成してください。</span>'; return; }
@@ -929,6 +998,8 @@ window.delPractice=(idx)=>{
 };
 function renderPrac(){
   renderPracCatTags();
+  renderMenuTplChips();
+  renderMenuTplList();
   // この日の練習一覧
   const arr=practices[pracSelDate]||[];
   $('#pracList').innerHTML = arr.length ? arr.map((pr,i)=>`
@@ -1220,6 +1291,33 @@ window.pcardTouchStart=(ev,src,d,idx)=>{
     if(navigator.vibrate)navigator.vibrate(20);
   },450);
 };
+/* ドラッグ中、画面上下端に近いと自動スクロール */
+let autoScrollTimer=null;
+function autoScrollDrag(y){
+  const H=window.innerHeight;
+  const zone=90;        // 端からの反応範囲(px)
+  let dir=0;
+  if(y < zone) dir=-1;          // 上端 → 上へ
+  else if(y > H-zone) dir=1;    // 下端 → 下へ
+  if(dir===0){ stopAutoScroll(); return; }
+  if(autoScrollTimer)return;
+  autoScrollTimer=setInterval(()=>{
+    if(!dragState){ stopAutoScroll(); return; }
+    const yy=dragState.lastY||0;
+    let d=0;
+    if(yy<zone)d=-1; else if(yy>H-zone)d=1;
+    if(!d){ stopAutoScroll(); return; }
+    const speed=Math.min(18, 6+Math.round((d<0? (zone-yy):(yy-(H-zone)))/6));
+    window.scrollBy(0, d*speed);
+    // スクロールに合わせて挿入位置も更新
+    const body=dragState.el.parentElement;
+    const cards=[...body.querySelectorAll('.pcard')].filter(c=>c!==dragState.el);
+    let placed=false;
+    for(const c of cards){ const r=c.getBoundingClientRect(); if(yy<r.top+r.height/2){body.insertBefore(dragState.el,c);placed=true;break;} }
+    if(!placed) body.appendChild(dragState.el);
+  }, 16);
+}
+function stopAutoScroll(){ if(autoScrollTimer){ clearInterval(autoScrollTimer); autoScrollTimer=null; } }
 window.pcardTouchMove=(ev)=>{
   if(!dragState)return;
   const y=ev.touches[0].clientY;
@@ -1229,6 +1327,8 @@ window.pcardTouchMove=(ev)=>{
     return;
   }
   ev.preventDefault(); // ドラッグ中はスクロール抑制
+  dragState.lastY=y;
+  autoScrollDrag(y); // 画面端に近いと自動スクロール
   const body=dragState.el.parentElement; // 同じ日のdaybody
   const cards=[...body.querySelectorAll('.pcard')].filter(c=>c!==dragState.el);
   let placed=false;
@@ -1239,6 +1339,7 @@ window.pcardTouchMove=(ev)=>{
   if(!placed) body.appendChild(dragState.el);
 };
 window.pcardTouchEnd=(ev)=>{
+  stopAutoScroll();
   if(!dragState){ return; }
   clearTimeout(dragState.longTimer);
   if(!dragState.started){ // ただのタップ → clickに任せる
