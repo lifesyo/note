@@ -359,7 +359,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
     </div>
     <div class="field">
       <label>練習メニュー</label>
-      <div id="menuTplChips" class="tags" style="margin-bottom:8px"></div>
+      <button class="btn soft" onclick="openMenuPicker('normal')" style="width:100%;margin-bottom:8px">＋ 登録メニューから選ぶ</button>
       <textarea id="pracText" rows="2" placeholder="例：3メンでのフィニッシュ、1on1、ハーフコートDF"></textarea>
     </div>
     <div class="field">
@@ -379,6 +379,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
       <input type="text" id="newMenuTpl" placeholder="登録するメニュー名" onkeydown="if(event.key==='Enter')addMenuTpl()">
       <button class="btn soft" onclick="addMenuTpl()">登録</button>
     </div>
+    <button class="btn soft" onclick="importMenusFromHistory()" style="width:100%;margin-top:8px">これまでの練習からまとめて登録</button>
     <div id="menuTplList" style="margin-top:10px"></div>
     <h2 class="section">カテゴリ別の回数（この月）</h2>
     <div id="pracStats"></div>
@@ -471,6 +472,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
     <div id="amAttnList" class="plist" style="margin-bottom:4px"></div>
     <h2 class="section">朝練メニュー</h2>
     <div class="field">
+      <button class="btn soft" onclick="openMenuPicker('am')" style="width:100%;margin-bottom:8px">＋ 登録メニューから選ぶ</button>
       <textarea id="amText" rows="2" placeholder="例：シュート200本、ハンドリング"></textarea>
     </div>
     <div class="field">
@@ -572,11 +574,21 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
   </div>
 </div>
 
+<!-- 登録メニュー選択モーダル（カテゴリ別に一覧→タップで本日の練習に登録） -->
+<div class="modal" id="menuPickerModal">
+  <div class="modal-inner" style="max-width:480px">
+    <div class="modal-head"><span id="menuPickerTitle">登録メニューから選ぶ</span><button class="modal-x" onclick="closeMenuPicker()">×</button></div>
+    <p class="hint" style="margin:0 0 10px">タップするとその日の練習に登録されます。</p>
+    <div id="menuPickerBody" style="max-height:60vh;overflow-y:auto"></div>
+  </div>
+</div>
+
 <!-- メニュー編集モーダル -->
 <div class="modal" id="menuTplModal">
   <div class="modal-inner">
     <div class="modal-head"><span>メニューを編集</span><button class="modal-x" onclick="closeMenuTplModal()">×</button></div>
-    <div class="field"><textarea id="menuTplEditText" rows="2"></textarea></div>
+    <div class="field"><label>メニュー内容</label><textarea id="menuTplEditText" rows="2"></textarea></div>
+    <div class="field"><label>カテゴリ（タップで切替）</label><div id="menuTplEditCats" class="tags"></div></div>
     <button class="btn primary" onclick="saveMenuTplEdit()">保存する</button>
     <button class="btn ghost" onclick="closeMenuTplModal()" style="margin-top:8px">やめる</button>
   </div>
@@ -663,12 +675,12 @@ let amPractices={}; // 朝練の練習記録（practicesと同形式）
 let amAttendance={}; // 朝練の出席（attendanceと同形式）
 let noteless={};   // { 'YYYY-MM-DD': true }。ノート提出を求めない日＝提出率の分母から除外
 let practiceCats=[]; // 作成済みカテゴリ名のリスト
-let menuTemplates=[]; // 登録した練習メニュー（テンプレート文字列の配列）
+let menuTemplates=[]; // 登録した練習メニュー [{text:'...', cats:['ファンダメンタル',...]}]（旧形式=文字列も可）
 let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091420';
+const APP_VER='2026091422';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -746,7 +758,7 @@ function subscribe(uid){
       if(d.amAttendance&&typeof d.amAttendance==='object')amAttendance=d.amAttendance;
       if(d.noteless&&typeof d.noteless==='object')noteless=d.noteless;
       if(Array.isArray(d.practiceCats))practiceCats=d.practiceCats;
-      if(Array.isArray(d.menuTemplates))menuTemplates=d.menuTemplates;
+      if(Array.isArray(d.menuTemplates))menuTemplates=d.menuTemplates.map(t=> typeof t==='string' ? {text:t,cats:[]} : {text:t.text||'',cats:Array.isArray(t.cats)?t.cats:[]});
       if(d.seq)seq=d.seq;
       $('#teamTag').textContent=teamName;
       if(dedupeEmptyNotes())save(); // 同日の空記録（受付チェックとノートの二重）を掃除
@@ -920,24 +932,58 @@ window.addCat=()=>{
   save();renderPracCatTags();
 };
 /* ---- 登録メニュー（テンプレート） ---- */
-function renderMenuTplChips(){
-  const box=$('#menuTplChips'); if(!box)return;
-  if(!menuTemplates.length){ box.innerHTML='<span class="hint" style="margin:0">登録メニューはまだありません（下で登録できます）。</span>'; return; }
-  box.innerHTML=menuTemplates.map((t,i)=>`<span class="tag" style="color:var(--accent-ink);border-color:var(--edge)" onclick="applyMenuTpl(${i})">${esc(t)}</span>`).join('');
+let menuPickerTarget='normal'; // normal / am
+window.openMenuPicker=(target)=>{
+  menuPickerTarget=target;
+  $('#menuPickerTitle').textContent = target==='am' ? '朝練メニューから選ぶ' : '登録メニューから選ぶ';
+  renderMenuPicker();
+  $('#menuPickerModal').classList.add('open');
+  document.body.classList.add('modal-lock');
+};
+window.closeMenuPicker=()=>{ $('#menuPickerModal').classList.remove('open'); document.body.classList.remove('modal-lock'); };
+function renderMenuPicker(){
+  const body=$('#menuPickerBody');
+  if(!menuTemplates.length){ body.innerHTML='<div class="empty">登録メニューがありません。練習記録の下部で登録できます。</div>'; return; }
+  // カテゴリ別にグループ化（複数カテゴリのメニューは各カテゴリに出す。カテゴリなしは「その他」）
+  const groups={}; const NOCAT='その他';
+  menuTemplates.forEach((m,i)=>{
+    const cats=(m.cats&&m.cats.length)?m.cats:[NOCAT];
+    cats.forEach(c=>{ (groups[c]=groups[c]||[]).push({m,i}); });
+  });
+  const order=[...practiceCats.filter(c=>groups[c]), ...Object.keys(groups).filter(c=>!practiceCats.includes(c)&&c!==NOCAT), ...(groups[NOCAT]?[NOCAT]:[])];
+  body.innerHTML=order.map(c=>`
+    <h2 class="section" style="margin-top:14px">${esc(c)}</h2>
+    ${groups[c].map(({m,i})=>`
+      <div class="card pad" style="margin-bottom:6px" onclick="pickMenu(${i})">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+          <div style="flex:1;white-space:pre-wrap">${esc(m.text)}</div>
+          <span style="color:var(--accent-ink);font-size:13px;white-space:nowrap">＋登録</span>
+        </div>
+      </div>`).join('')}`).join('');
 }
-window.applyMenuTpl=(i)=>{
-  const t=menuTemplates[i]; if(t==null)return;
-  const ta=$('#pracText');
-  ta.value = ta.value.trim() ? (ta.value.replace(/\s*$/,'')+'\n'+t) : t; // 既存本文があれば改行して追記
-  ta.focus();
+window.pickMenu=(i)=>{
+  const m=menuTemplates[i]; if(!m)return;
+  if(menuPickerTarget==='am'){
+    if(!amPractices[amSelDate])amPractices[amSelDate]=[];
+    amPractices[amSelDate].push({text:m.text,cats:(m.cats||[]).slice()});
+    save(); renderAmHist(); toast('朝練に登録しました');
+  }else{
+    if(!practices[pracSelDate])practices[pracSelDate]=[];
+    practices[pracSelDate].push({text:m.text,cats:(m.cats||[]).slice()});
+    save(); renderPrac(); toast('本日の練習に登録しました');
+  }
+  closeMenuPicker();
 };
 function renderMenuTplList(){
   const box=$('#menuTplList'); if(!box)return;
   if(!menuTemplates.length){ box.innerHTML='<div class="empty">登録メニューはありません。</div>'; return; }
-  box.innerHTML=menuTemplates.map((t,i)=>`
+  box.innerHTML=menuTemplates.map((m,i)=>`
     <div class="card pad" style="margin-bottom:6px">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
-        <div style="flex:1;white-space:pre-wrap">${esc(t)}</div>
+        <div style="flex:1">
+          <div style="white-space:pre-wrap">${esc(m.text)}</div>
+          <div class="tg" style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${(m.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')||'<span class="hint" style="margin:0">カテゴリなし</span>'}</div>
+        </div>
         <span class="noterow-del" style="color:var(--accent-ink)" onclick="openMenuTplEdit(${i})">編集</span>
         <span class="noterow-del" style="color:var(--exe)" onclick="delMenuTpl(${i})">削除</span>
       </div>
@@ -945,28 +991,56 @@ function renderMenuTplList(){
 }
 window.addMenuTpl=()=>{
   const el=$('#newMenuTpl'); const v=(el.value||'').trim(); if(!v)return;
-  if(!menuTemplates.includes(v))menuTemplates.push(v);
+  menuTemplates.push({text:v,cats:[]});
   el.value='';
-  save(); renderMenuTplChips(); renderMenuTplList(); toast('メニューを登録しました');
+  save(); renderMenuTplList(); toast('メニューを登録しました。カテゴリは編集から設定できます');
+};
+window.importMenusFromHistory=()=>{
+  const existing=new Set(menuTemplates.map(m=>(m.text||'').trim()));
+  let added=0;
+  const scan=obj=>{
+    Object.keys(obj).forEach(d=>{
+      (obj[d]||[]).forEach(pr=>{
+        const t=(pr.text||'').trim();
+        if(!t || existing.has(t))return;
+        existing.add(t);
+        menuTemplates.push({text:t, cats:Array.isArray(pr.cats)?pr.cats.slice():[]});
+        added++;
+      });
+    });
+  };
+  scan(practices); scan(amPractices);
+  if(!added){ toast('新しく登録できる練習はありませんでした'); return; }
+  save(); renderMenuTplList(); toast(`${added}件を登録メニューに追加しました`);
 };
 window.delMenuTpl=(i)=>{
   if(!confirm('この登録メニューを削除しますか？'))return;
   menuTemplates.splice(i,1);
-  save(); renderMenuTplChips(); renderMenuTplList();
+  save(); renderMenuTplList();
 };
 let menuTplEditIdx=null;
+let menuTplEditCats=[];
 window.openMenuTplEdit=(i)=>{
   menuTplEditIdx=i;
-  $('#menuTplEditText').value=menuTemplates[i]||'';
+  const m=menuTemplates[i]||{text:'',cats:[]};
+  menuTplEditCats=(m.cats||[]).slice();
+  $('#menuTplEditText').value=m.text||'';
+  renderMenuTplEditCats();
   $('#menuTplModal').classList.add('open');
   document.body.classList.add('modal-lock');
 };
+function renderMenuTplEditCats(){
+  const box=$('#menuTplEditCats'); if(!box)return;
+  if(!practiceCats.length){ box.innerHTML='<span class="hint" style="margin:0">カテゴリがありません。練習記録画面で作成してください。</span>'; return; }
+  box.innerHTML=practiceCats.map(c=>`<span class="tag${menuTplEditCats.includes(c)?' on':''}" onclick="tglMenuTplCat('${c.replace(/'/g,"\\'")}')">${esc(c)}</span>`).join('');
+}
+window.tglMenuTplCat=c=>{ const i=menuTplEditCats.indexOf(c); if(i>=0)menuTplEditCats.splice(i,1); else menuTplEditCats.push(c); renderMenuTplEditCats(); };
 window.closeMenuTplModal=()=>{ $('#menuTplModal').classList.remove('open'); document.body.classList.remove('modal-lock'); menuTplEditIdx=null; };
 window.saveMenuTplEdit=()=>{
   if(menuTplEditIdx==null)return;
   const v=$('#menuTplEditText').value.trim(); if(!v){toast('内容を入力してください');return;}
-  menuTemplates[menuTplEditIdx]=v;
-  closeMenuTplModal(); save(); renderMenuTplChips(); renderMenuTplList(); toast('メニューを更新しました');
+  menuTemplates[menuTplEditIdx]={text:v,cats:menuTplEditCats.slice()};
+  closeMenuTplModal(); save(); renderMenuTplList(); toast('メニューを更新しました');
 };
 function renderPracCatTags(){
   const box=$('#pracCatTags');
@@ -998,7 +1072,6 @@ window.delPractice=(idx)=>{
 };
 function renderPrac(){
   renderPracCatTags();
-  renderMenuTplChips();
   renderMenuTplList();
   // この日の練習一覧
   const arr=practices[pracSelDate]||[];
@@ -1009,6 +1082,7 @@ function renderPrac(){
           <div style="white-space:pre-wrap">${esc(pr.text)}</div>
           <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')||'<span class="hint" style="margin:0">カテゴリなし</span>'}</div>
         </div>
+        <span class="noterow-del" style="color:var(--accent-ink)" onclick="openPracEditSrc(practices,'recvnormal',pracSelDate,${i})">編集</span>
         <span class="noterow-del" style="color:var(--exe)" onclick="delPractice(${i})">削除</span>
       </div>
     </div>`).join('') : '<div class="empty">この日の練習はまだ記録されていません。</div>';
@@ -1413,7 +1487,7 @@ window.savePracEdit=()=>{
   }
   const sy=pmScrollY;
   closePracModal(); save();
-  if(view==='am') renderAmHist(); else renderPracHist();
+  if(view==='am') renderAmHist(); else if(view==='recvnormal') renderPrac(); else renderPracHist();
   requestAnimationFrame(()=>window.scrollTo(0,sy)); // fixed解除後に復元
   toast('更新しました');
 };
@@ -1425,7 +1499,7 @@ window.deletePracEdit=()=>{
   if(!src[d].length)delete src[d];
   const sy=pmScrollY;
   closePracModal(); save();
-  if(view==='am') renderAmHist(); else renderPracHist();
+  if(view==='am') renderAmHist(); else if(view==='recvnormal') renderPrac(); else renderPracHist();
   requestAnimationFrame(()=>window.scrollTo(0,sy));
   toast('削除しました');
 };
