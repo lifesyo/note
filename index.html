@@ -690,7 +690,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091425';
+const APP_VER='2026091426';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1705,8 +1705,9 @@ function noteRateInMonth(p,ym){
 }
 /* チームの活動日（練習記録がある日 or 誰かの出席記録がある日） */
 function activeDatesInMonth(ym){
+  // 出席率の分母＝「実際に出席チェックを行った日」のみ。
+  // 練習だけ記録して出席入力していない日は分母に入れない（全員欠席扱いになるのを防ぐ）。
   const s=new Set();
-  Object.keys(practices).forEach(d=>{ if(d.slice(0,7)===ym && practices[d] && practices[d].length) s.add(d); });
   Object.keys(attendance).forEach(d=>{ if(d.slice(0,7)!==ym)return; const r=attendance[d]; const has=Array.isArray(r)?r.length:Object.keys(r||{}).length; if(has)s.add(d); });
   return [...s];
 }
