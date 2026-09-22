@@ -690,7 +690,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091426';
+const APP_VER='2026091428';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1683,25 +1683,29 @@ function noteDatesInMonth(ym){
 }
 /* ノート提出率 = ○の日数 ÷（○の日 ＋ 出席してたのに未提出だった日）。△(遅れ)は分母分子とも除外。
    対象は「ノート提出があった日」＋「出席してたのに未提出だった日」だけ。単なる出席日は無関係。 */
-function noteRateInMonth(p,ym){
-  let num=0, den=0;
-  // ノート提出があった日を評価
-  noteDatesInMonth(ym).forEach(d=>{
-    const st=statusOf(p,d);
-    if(st==='ontime'||st==='excused'){ num++; den++; }
-    else if(st==='late'){ /* 遅れは除外 */ }
-    // none はここでは扱わない（下でまとめて）
-  });
-  // 出席してたのに、その日ノート未提出だった日を分母に加える（提出すべきだった日）
-  // ただし「ノート提出なしの日」は対象外＝分母に入れない
+/* チーム全体の練習日＝1人でも出席があった日（noteless日は除く）。提出率の分母に使う。 */
+function teamPracticeDates(ym){
+  const s=new Set();
   Object.keys(attendance).forEach(d=>{
     if(d.slice(0,7)!==ym)return;
-    if(noteless[d])return;
-    const st=statusOf(p,d);
-    if(st==='none' && isPresent(p.id,d)) den++;
+    if(noteless[d])return; // ノート提出なしの日は分母に入れない
+    const r=attendance[d];
+    const has=Array.isArray(r)?r.length:Object.keys(r||{}).length;
+    if(has)s.add(d);
   });
-  if(!den)return null;
-  return Math.round(num/den*100);
+  return [...s];
+}
+function noteRateInMonth(p,ym){
+  // 分母＝チーム全体の練習日（誰か1人でも出席があった日、noteless除く）。
+  // 本人が欠席でも分母に入る。分子＝その日に提出（◎○）した日。遅れ△は分子に入れない。
+  const days=teamPracticeDates(ym);
+  if(!days.length)return null;
+  let num=0;
+  days.forEach(d=>{
+    const st=statusOf(p,d);
+    if(st==='ontime'||st==='excused') num++;
+  });
+  return Math.round(num/days.length*100);
 }
 /* チームの活動日（練習記録がある日 or 誰かの出席記録がある日） */
 function activeDatesInMonth(ym){
