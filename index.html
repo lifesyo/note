@@ -261,6 +261,10 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
 .monthnav button{width:40px;height:40px;border-radius:12px;border:1px solid var(--edge);background:var(--card);color:var(--ink);font-size:20px;font-family:inherit;cursor:pointer;line-height:1}
 .monthnav button:active{background:var(--paper-2)}
 .monthnav span{font-size:16px;font-weight:700;min-width:130px;text-align:center;font-variant-numeric:tabular-nums}
+.daynav{position:relative;display:flex;align-items:center;justify-content:center;gap:14px;margin:2px 0 12px}
+.daynav button{width:40px;height:40px;border-radius:12px;border:1px solid var(--edge);background:var(--card);color:var(--ink);font-size:20px;font-family:inherit;cursor:pointer;line-height:1}
+.daynav button:active{background:var(--paper-2)}
+.daynav-label{font-size:15px;font-weight:700;min-width:150px;text-align:center;cursor:pointer;background:var(--accent-wash);color:var(--accent-ink);padding:9px 14px;border-radius:12px}
 .segbar{display:flex;gap:6px;background:var(--paper-2);border:1px solid var(--edge);border-radius:12px;padding:4px;margin-bottom:16px}
 .seg{flex:1;border:none;background:none;color:var(--ink-soft);font-family:inherit;font-size:14px;font-weight:600;padding:10px;border-radius:9px;cursor:pointer;transition:.15s}
 .seg.on{background:linear-gradient(120deg,#2dd4bf,#38bdf8);color:#06232b}
@@ -278,14 +282,21 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
   </header>
   <div class="wrap">
     <div class="today" style="margin-top:6px">
-      <div class="sub" id="vDate"></div>
-      <div style="font-size:15px;font-weight:700;margin-top:4px">練習メニュー・出席</div>
+      <div style="font-size:15px;font-weight:700">練習メニュー・出席</div>
+      <div class="sub" style="margin-top:2px">日付を選んで確認できます</div>
     </div>
 
     <div class="segbar" style="margin-top:14px">
       <button class="seg on" id="vseg-prac" onclick="vSwitch('prac')">練習</button>
       <button class="seg" id="vseg-am" onclick="vSwitch('am')">朝練</button>
       <button class="seg" id="vseg-attn" onclick="vSwitch('attn')">出席</button>
+    </div>
+
+    <div class="daynav" id="vDayNav" style="margin-top:14px">
+      <button onclick="vShiftDay(-1)" aria-label="前へ">‹</button>
+      <span class="daynav-label" id="vDayLabel" onclick="$('#vDayPick').showPicker?$('#vDayPick').showPicker():$('#vDayPick').click()">—</span>
+      <button onclick="vShiftDay(1)" aria-label="次へ">›</button>
+      <input type="date" id="vDayPick" onchange="vPickDay(this.value)" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none">
     </div>
 
     <div id="vBody" style="padding-bottom:40px"></div>
@@ -482,6 +493,12 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
     </div>
     <div id="pracFilter" class="tags" style="margin-bottom:12px"></div>
     <div id="pracRatio"></div>
+    <div class="daynav" id="pracDayNav">
+      <button onclick="shiftPracDay(-1)" aria-label="前へ">‹</button>
+      <span class="daynav-label" id="pracDayLabel" onclick="$('#pracDayPick').showPicker?$('#pracDayPick').showPicker():$('#pracDayPick').click()">—</span>
+      <button onclick="shiftPracDay(1)" aria-label="次へ">›</button>
+      <input type="date" id="pracDayPick" onchange="pickPracDay(this.value)" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none">
+    </div>
     <div id="pracHist"></div>
   </div>
 
@@ -518,6 +535,12 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
       <button onclick="shiftAmMonth(1)" aria-label="次の月">›</button>
     </div>
     <div id="amRatio"></div>
+    <div class="daynav" id="amDayNav">
+      <button onclick="shiftAmDay(-1)" aria-label="前へ">‹</button>
+      <span class="daynav-label" id="amDayLabel" onclick="$('#amDayPick').showPicker?$('#amDayPick').showPicker():$('#amDayPick').click()">—</span>
+      <button onclick="shiftAmDay(1)" aria-label="次へ">›</button>
+      <input type="date" id="amDayPick" onchange="pickAmDay(this.value)" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none">
+    </div>
     <div id="amHist"></div>
 
     <h2 class="section">朝練の登録メニュー管理</h2>
@@ -728,7 +751,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026092502';
+const APP_VER='2026092503';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -776,6 +799,7 @@ onAuthStateChanged(auth,user=>{
 
 /* ===== 選手用ビュー（閲覧専用） ===== */
 let vView='prac';
+let vSelDate=todayStr();
 function startViewer(){
   $('#gate').classList.remove('show');
   $('#gate').style.display='none';
@@ -783,7 +807,6 @@ function startViewer(){
   const cw=$('#coachWrap'); if(cw)cw.style.display='none'; // 先生用の本体（ホーム等）を隠す
   const nav=document.querySelector('nav'); if(nav)nav.style.display='none';
   $('#viewerMode').style.display='block';
-  $('#vDate').textContent=fmt(todayStr())+'（'+['日','月','火','水','木','金','土'][new Date(todayStr()).getDay()]+'）';
   const vv=$('#vAppVer'); if(vv)vv.textContent='v'+APP_VER;
   // 読み取り専用購読
   onSnapshot(doc(db,'noteiq',viewerUid), snap=>{
@@ -805,33 +828,51 @@ window.vSwitch=v=>{
   ['prac','am','attn'].forEach(x=>$('#vseg-'+x).classList.toggle('on',x===v));
   renderViewer();
 };
+/* 日付を前後に移動（練習/朝練は記録のある日だけをスキップ移動、出席は1日ずつ） */
+window.vShiftDay=(dir)=>{
+  if(vView==='attn'){
+    const dt=new Date(vSelDate); dt.setDate(dt.getDate()+dir);
+    vSelDate=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  }else{
+    const src = vView==='am' ? amPractices : practices;
+    const days=Object.keys(src).filter(d=>src[d]&&src[d].length).sort(); // 古い順
+    if(!days.length)return;
+    let i=days.indexOf(vSelDate);
+    if(i<0){ // 選択日に記録がなければ、方向に応じて近い記録日へ
+      i = dir>0 ? days.findIndex(d=>d>vSelDate) : (()=>{for(let k=days.length-1;k>=0;k--)if(days[k]<vSelDate)return k;return -1;})();
+      if(i<0){ i = dir>0 ? days.length-1 : 0; }
+      vSelDate=days[i];
+    }else{
+      const ni=i+dir;
+      if(ni>=0 && ni<days.length) vSelDate=days[ni];
+    }
+  }
+  renderViewer();
+};
+window.vPickDay=(v)=>{ if(v){ vSelDate=v; renderViewer(); } };
 function renderViewer(){
   const box=$('#vBody'); const today=todayStr();
   const WD=['日','月','火','水','木','金','土'];
+  // 日付ラベル更新
+  const lbl=$('#vDayLabel'); const pick=$('#vDayPick');
+  if(lbl){ lbl.textContent=fmt(vSelDate)+'（'+WD[new Date(vSelDate).getDay()]+'）'+(vSelDate===today?' ・今日':''); }
+  if(pick){ pick.value=vSelDate; }
   if(vView==='prac'||vView==='am'){
     const src = vView==='am' ? amPractices : practices;
-    const days=Object.keys(src).filter(d=>src[d]&&src[d].length).sort((a,b)=>a>b?-1:1); // 新しい順
-    if(!days.length){ box.innerHTML=`<div class="empty">${vView==='am'?'朝練':'練習'}メニューはまだありません。</div>`; return; }
-    box.innerHTML=days.map(d=>{
-      const isToday=d===today;
-      const cards=src[d].map(pr=>`
-        <div class="card pad" style="margin-bottom:8px">
-          <div style="white-space:pre-wrap">${esc(pr.text)}</div>
-          <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')}</div>
-        </div>`).join('');
-      return `<div class="daygrp">
-        <div class="dayhd"><span class="dd">${fmt(d)}（${WD[new Date(d).getDay()]}）${isToday?' ・今日':''}</span><span class="ct">${src[d].length}件</span><span class="ln"></span></div>
-        <div class="daybody">${cards}</div>
-      </div>`;
-    }).join('');
-  }else{ // 出席（今日）
-    const att = attendance[today];
+    const list = src[vSelDate]||[];
+    box.innerHTML = list.length ? list.map(pr=>`
+      <div class="card pad" style="margin-bottom:8px">
+        <div style="white-space:pre-wrap">${esc(pr.text)}</div>
+        <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')}</div>
+      </div>`).join('')
+      : `<div class="empty">この日の${vView==='am'?'朝練':'練習'}メニューはありません。‹ › で他の日、日付をタップでカレンダー。</div>`;
+  }else{ // 出席
+    const att = attendance[vSelDate];
     if(!players.length){ box.innerHTML='<div class="empty">選手が登録されていません。</div>'; return; }
     const MARK={present:'出席',late:'遅刻',absent:'—'};
     const COL={present:'var(--ok)',late:'var(--warn)',absent:'var(--ink-faint)'};
     const stOf=(id)=>{ const r=att; if(!r)return 'absent'; if(Array.isArray(r))return r.includes(id)?'present':'absent'; return r[id]||'absent'; };
-    box.innerHTML=`<div class="dayhd" style="margin-bottom:10px"><span class="dd">${fmt(today)}（${WD[new Date(today).getDay()]}）・今日</span><span class="ln"></span></div>`
-      +'<div class="plist">'+players.map(p=>{
+    box.innerHTML='<div class="plist">'+players.map(p=>{
       const s=stOf(p.id);
       return `<div class="prow"><div class="avatar">${(p.name||'?').slice(0,1)}</div>
         <div class="meta"><div class="nm">${esc(p.name)}</div></div>
@@ -1278,6 +1319,7 @@ function renderPrac(){
 /* ========== 練習履歴ページ ========== */
 let pracHistMonth=null;   // 表示中の月 'YYYY-MM'
 let pracHistFilter=null;  // 絞り込み中のカテゴリ（null=全部）
+let pracHistDay=null;     // 表示中の日付（練習カード一覧用）
 /* 練習記録がある月の一覧（新しい順） */
 function pracMonths(){
   const s=new Set();
@@ -1309,34 +1351,54 @@ function renderPracHist(){
   ) : '';
   // カテゴリの割合（その月・偏り可視化）
   $('#pracRatio').innerHTML = renderPracRatio(days);
-  // 本文
-  const canDrag = (pracHistFilter===null); // 絞り込み中は並び替え無効
+  // 表示日の決定：選択日がその月の記録日になければ、その月の最新記録日へ
+  if(!pracHistDay || !days.includes(pracHistDay)) pracHistDay = days[0] || null;
+  // 日付ナビ更新
+  const dl=$('#pracDayLabel'); const dp=$('#pracDayPick');
+  if(pracHistDay){
+    const wd0=['日','月','火','水','木','金','土'][new Date(pracHistDay).getDay()];
+    if(dl)dl.textContent=fmt(pracHistDay)+'（'+wd0+'）'+(pracHistDay===todayStr()?' ・今日':'');
+    if(dp)dp.value=pracHistDay;
+  }else if(dl){ dl.textContent='—'; }
+  // 本文（選択日1日分）
+  const canDrag = (pracHistFilter===null);
   let html='';
-  days.forEach(d=>{
+  if(pracHistDay){
+    const d=pracHistDay;
     let list=practices[d].map((pr,i)=>({pr,i}));
     if(pracHistFilter) list=list.filter(x=>(x.pr.cats||[]).includes(pracHistFilter));
-    if(!list.length)return;
-    const wd=['日','月','火','水','木','金','土'][new Date(d).getDay()];
-    const cards=list.map(({pr,i})=>`
-      <div class="card pad pcard" style="margin-bottom:8px" data-d="${d}" data-idx="${i}" data-src="normal"
-           onclick="pcardClick('normal','${d}',${i})"
-           ontouchstart="pcardTouchStart(event,'normal','${d}',${i})" ontouchmove="pcardTouchMove(event)" ontouchend="pcardTouchEnd(event)">
-        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
-          <div style="flex:1">
-            <div style="white-space:pre-wrap">${esc(pr.text)}</div>
-            <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')||'<span class="hint" style="margin:0">カテゴリなし</span>'}</div>
+    if(list.length){
+      const cards=list.map(({pr,i})=>`
+        <div class="card pad pcard" style="margin-bottom:8px" data-d="${d}" data-idx="${i}" data-src="normal"
+             onclick="pcardClick('normal','${d}',${i})"
+             ontouchstart="pcardTouchStart(event,'normal','${d}',${i})" ontouchmove="pcardTouchMove(event)" ontouchend="pcardTouchEnd(event)">
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+            <div style="flex:1">
+              <div style="white-space:pre-wrap">${esc(pr.text)}</div>
+              <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')||'<span class="hint" style="margin:0">カテゴリなし</span>'}</div>
+            </div>
+            <span style="color:var(--accent-ink);font-size:13px;white-space:nowrap">編集 ›</span>
           </div>
-          <span style="color:var(--accent-ink);font-size:13px;white-space:nowrap">編集 ›</span>
-        </div>
-      </div>`).join('');
-    html+=`<div class="daygrp">
-      <div class="dayhd"><span class="dd">${fmt(d)}（${wd}）</span><span class="ct">${list.length}件</span><span class="ln"></span></div>
-      <div class="daybody" data-d="${d}" data-src="normal" data-nodrag="${canDrag?'':'1'}">${cards}</div>
-    </div>`;
-  });
-  if(canDrag && days.length){ html=`<p class="hint" style="margin:0 2px 6px">カードを長押しすると同じ日の中で並び替えできます。</p>`+html; }
+        </div>`).join('');
+      html=`<div class="daybody" data-d="${d}" data-src="normal" data-nodrag="${canDrag?'':'1'}">${cards}</div>`;
+      if(canDrag){ html=`<p class="hint" style="margin:0 2px 6px">カードを長押しすると同じ日の中で並び替えできます。</p>`+html; }
+    }else{
+      html='<div class="empty">この日に該当する練習はありません。‹ › で他の日へ。</div>';
+    }
+  }
   wrap.innerHTML = html || '<div class="empty">この条件の練習はありません。</div>';
 }
+/* 練習日を前後に移動（記録のある日だけをスキップ移動、月もまたぐ） */
+window.shiftPracDay=dir=>{
+  const allDays=Object.keys(practices).filter(d=>practices[d]&&practices[d].length).sort(); // 全期間・古い順
+  if(!allDays.length)return;
+  let i=allDays.indexOf(pracHistDay);
+  if(i<0){ i = dir>0 ? allDays.length-1 : 0; pracHistDay=allDays[i]; }
+  else { const ni=i+dir; if(ni>=0&&ni<allDays.length) pracHistDay=allDays[ni]; }
+  pracHistMonth=pracHistDay.slice(0,7); // 月表示（円グラフ）も追随
+  renderPracHist();
+};
+window.pickPracDay=v=>{ if(v){ pracHistDay=v; pracHistMonth=v.slice(0,7); renderPracHist(); } };
 /* カテゴリ用の色パレット（順番に割り当て） */
 const PRAC_PALETTE=['#0fb5a6','#38bdf8','#f59e0b','#a78bfa','#f472b6','#34d399','#fb7185','#60a5fa','#facc15','#c084fc'];
 function pracCatColor(name, idx){ return PRAC_PALETTE[idx % PRAC_PALETTE.length]; }
@@ -1402,6 +1464,7 @@ let pracView='normal';
 let amSelDate=todayStr();
 let amSelCats=[];
 let amHistMonth=null;
+let amHistDay=null;
 window.switchPracView=v=>{
   pracView=v;
   $('#pseg-normal').classList.toggle('on', v==='normal');
@@ -1489,9 +1552,17 @@ function renderAmHist(){
   lbl.textContent=monthLabel(amHistMonth);
   const days=Object.keys(amPractices).filter(d=>d.slice(0,7)===amHistMonth && amPractices[d] && amPractices[d].length).sort((a,b)=>a>b?-1:1);
   ratio.innerHTML=renderPracRatio(days, amPractices);
+  // 表示日の決定
+  if(!amHistDay || !days.includes(amHistDay)) amHistDay = days[0] || null;
+  const dl=$('#amDayLabel'); const dp=$('#amDayPick');
+  if(amHistDay){
+    const wd0=['日','月','火','水','木','金','土'][new Date(amHistDay).getDay()];
+    if(dl)dl.textContent=fmt(amHistDay)+'（'+wd0+'）'+(amHistDay===todayStr()?' ・今日':'');
+    if(dp)dp.value=amHistDay;
+  }else if(dl){ dl.textContent='—'; }
   let html='';
-  days.forEach(d=>{
-    const wd=['日','月','火','水','木','金','土'][new Date(d).getDay()];
+  if(amHistDay){
+    const d=amHistDay;
     const cards=amPractices[d].map((pr,i)=>`
       <div class="card pad pcard" style="margin-bottom:8px" data-d="${d}" data-idx="${i}" data-src="am"
            onclick="pcardClick('am','${d}',${i})"
@@ -1504,14 +1575,20 @@ function renderAmHist(){
           <span style="color:var(--accent-ink);font-size:13px;white-space:nowrap">編集 ›</span>
         </div>
       </div>`).join('');
-    html+=`<div class="daygrp">
-      <div class="dayhd"><span class="dd">${fmt(d)}（${wd}）</span><span class="ct">${amPractices[d].length}件</span><span class="ln"></span></div>
-      <div class="daybody" data-d="${d}" data-src="am">${cards}</div>
-    </div>`;
-  });
-  if(days.length){ html=`<p class="hint" style="margin:0 2px 6px">カードを長押しすると同じ日の中で並び替えできます。</p>`+html; }
+    html=`<p class="hint" style="margin:0 2px 6px">カードを長押しすると同じ日の中で並び替えできます。</p><div class="daybody" data-d="${d}" data-src="am">${cards}</div>`;
+  }
   wrap.innerHTML=html;
 }
+window.shiftAmDay=dir=>{
+  const allDays=Object.keys(amPractices).filter(d=>amPractices[d]&&amPractices[d].length).sort();
+  if(!allDays.length)return;
+  let i=allDays.indexOf(amHistDay);
+  if(i<0){ i = dir>0 ? allDays.length-1 : 0; amHistDay=allDays[i]; }
+  else { const ni=i+dir; if(ni>=0&&ni<allDays.length) amHistDay=allDays[ni]; }
+  amHistMonth=amHistDay.slice(0,7);
+  renderAmHist();
+};
+window.pickAmDay=v=>{ if(v){ amHistDay=v; amHistMonth=v.slice(0,7); renderAmHist(); } };
 window.openAmEdit=(d,idx)=>{ openPracEditSrc(amPractices,'am',d,idx); };
 
 /* ---- 練習カード：タップ＝編集 / 長押し＝同じ日の中でD&D並び替え ---- */
