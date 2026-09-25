@@ -13,6 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="Note IQ">
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
 :root{
   --ink:#0f2b33;--ink-soft:#4a6b74;--ink-faint:#8aa3aa;
@@ -267,6 +268,32 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
 </head>
 <body>
 
+<!-- ========== 選手用ビュー（QRから ?view=<uid> で開く・閲覧専用） ========== -->
+<div id="viewerMode" style="display:none">
+  <header>
+    <div class="brand">
+      <h1><span class="n">Note</span> IQ</h1>
+      <span class="tag" id="vTeamTag" style="margin-left:auto">　</span>
+    </div>
+  </header>
+  <div class="wrap">
+    <div class="today" style="margin-top:6px">
+      <div class="sub" id="vDate"></div>
+      <div style="font-size:15px;font-weight:700;margin-top:4px">今日の練習</div>
+    </div>
+
+    <div class="segbar" style="margin-top:14px">
+      <button class="seg on" id="vseg-prac" onclick="vSwitch('prac')">練習</button>
+      <button class="seg" id="vseg-am" onclick="vSwitch('am')">朝練</button>
+      <button class="seg" id="vseg-attn" onclick="vSwitch('attn')">出席</button>
+    </div>
+
+    <div id="vBody" style="padding-bottom:40px"></div>
+
+    <p class="hint" style="text-align:center;margin-top:24px;opacity:.6">Note IQ <span id="vAppVer"></span></p>
+  </div>
+</div>
+
 <!-- ========== GATE (login) ========== -->
 <div id="gate" class="show">
   <div class="logo"><span>Note</span> IQ</div>
@@ -511,6 +538,14 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
   <h2 class="section">チーム名</h2>
   <div class="card pad"><div class="krow"><input type="text" id="teamName" placeholder="チーム名"><button class="btn soft" onclick="saveTeam()">保存</button></div></div>
 
+  <h2 class="section">選手用ページ（QR）</h2>
+  <div class="card pad">
+    <p class="hint" style="margin:0 0 10px">このQRを選手が読み込むと、今日の練習メニュー・朝練・出席表を閲覧できます（閲覧のみ）。QRは固定で、内容は自動で最新に更新されます。</p>
+    <div id="viewerQr" style="display:flex;justify-content:center;padding:8px 0"></div>
+    <div class="krow" style="margin-top:8px"><input type="text" id="viewerUrl" readonly><button class="btn soft" onclick="copyViewerUrl()">コピー</button></div>
+    <button class="btn soft noprint" onclick="printViewerQr()" style="width:100%;margin-top:8px">🖨 QRを印刷 / PDF保存</button>
+  </div>
+
   <h2 class="section">ノートを一括取り込み</h2>
   <div class="card pad">
     <p class="hint" style="margin:0 0 10px">文字起こししたノートをJSONで貼り付けて、名前で選手に自動振り分けします。</p>
@@ -658,6 +693,9 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
+/* ===== 選手用ビュー（QR ?view=<uid>）判定 ===== */
+const viewerUid = new URLSearchParams(location.search).get('view');
+
 /* ---------- state ---------- */
 const K={cog:'認知',jdg:'判断',sel:'選択',exe:'実行'};
 const Kcol={cog:'var(--cog)',jdg:'var(--jdg)',sel:'var(--sel)',exe:'var(--exe)'};
@@ -690,7 +728,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026091428';
+const APP_VER='2026092501';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -730,10 +768,68 @@ window.doLogin=()=>{
 window.doLogout=()=>{ if(unsub)unsub(); fbSignOut(auth); };
 
 onAuthStateChanged(auth,user=>{
+  if(viewerUid){ return; } // 選手モード中は先生ログイン処理を行わない
   if(!user){ currentUser=null; showGate('login'); return; }
   currentUser=user;
   launch();
 });
+
+/* ===== 選手用ビュー（閲覧専用） ===== */
+let vView='prac';
+function startViewer(){
+  $('#gate').classList.remove('show');
+  $('#gate').style.display='none';
+  document.querySelector('header').style.display='none'; // 先生用ヘッダーを隠す
+  const nav=document.querySelector('nav'); if(nav)nav.style.display='none';
+  $('#viewerMode').style.display='block';
+  $('#vDate').textContent=fmt(todayStr())+'（'+['日','月','火','水','木','金','土'][new Date(todayStr()).getDay()]+'）';
+  const vv=$('#vAppVer'); if(vv)vv.textContent='v'+APP_VER;
+  // 読み取り専用購読
+  onSnapshot(doc(db,'noteiq',viewerUid), snap=>{
+    if(snap.exists()){
+      const d=snap.data();
+      players=Array.isArray(d.players)?d.players:[];
+      if(d.teamName)teamName=d.teamName;
+      attendance=(d.attendance&&typeof d.attendance==='object')?d.attendance:{};
+      practices=(d.practices&&typeof d.practices==='object')?d.practices:{};
+      amPractices=(d.amPractices&&typeof d.amPractices==='object')?d.amPractices:{};
+      amAttendance=(d.amAttendance&&typeof d.amAttendance==='object')?d.amAttendance:{};
+      $('#vTeamTag').textContent=teamName;
+    }
+    renderViewer();
+  }, err=>{ console.error(err); $('#vBody').innerHTML='<div class="empty">データを読み込めませんでした。時間をおいて再度お試しください。</div>'; });
+}
+window.vSwitch=v=>{
+  vView=v;
+  ['prac','am','attn'].forEach(x=>$('#vseg-'+x).classList.toggle('on',x===v));
+  renderViewer();
+};
+function renderViewer(){
+  const box=$('#vBody'); const d=todayStr();
+  if(vView==='prac'||vView==='am'){
+    const src = vView==='am' ? amPractices : practices;
+    const list = src[d]||[];
+    box.innerHTML = list.length ? list.map(pr=>`
+      <div class="card pad" style="margin-bottom:8px">
+        <div style="white-space:pre-wrap">${esc(pr.text)}</div>
+        <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')}</div>
+      </div>`).join('')
+      : `<div class="empty">${vView==='am'?'今日の朝練':'今日の練習'}メニューはまだありません。</div>`;
+  }else{ // 出席
+    const att = attendance[d];
+    if(!players.length){ box.innerHTML='<div class="empty">選手が登録されていません。</div>'; return; }
+    const MARK={present:'出席',late:'遅刻',absent:'—'};
+    const COL={present:'var(--ok)',late:'var(--warn)',absent:'var(--ink-faint)'};
+    const stOf=(id)=>{ const r=att; if(!r)return 'absent'; if(Array.isArray(r))return r.includes(id)?'present':'absent'; return r[id]||'absent'; };
+    box.innerHTML='<div class="plist">'+players.map(p=>{
+      const s=stOf(p.id);
+      return `<div class="prow"><div class="avatar">${(p.name||'?').slice(0,1)}</div>
+        <div class="meta"><div class="nm">${esc(p.name)}</div></div>
+        <div class="cnt" style="color:${COL[s]}">${MARK[s]}</div></div>`;
+    }).join('')+'</div>';
+  }
+}
+if(viewerUid){ startViewer(); }
 function showGate(which){
   $('#gate').classList.add('show');
   $('#login-card').style.display = 'block';
@@ -752,7 +848,37 @@ function renderUser(){
     <div><div style="font-weight:700">${u.displayName||''}</div><div class="small">${u.email||''}</div></div></div>`;
   $('#teamName').value=teamName;
   const vEl=$('#appVer'); if(vEl) vEl.textContent='v'+APP_VER;
+  renderViewerQr();
 }
+/* 選手用ページのQRとURLを描画 */
+function viewerPageUrl(){
+  return location.origin + location.pathname + '?view=' + (currentUser?currentUser.uid:'');
+}
+function renderViewerQr(){
+  if(!currentUser)return;
+  const url=viewerPageUrl();
+  const inp=$('#viewerUrl'); if(inp)inp.value=url;
+  const box=$('#viewerQr'); if(!box)return;
+  box.innerHTML='';
+  try{ new QRCode(box,{text:url,width:180,height:180,correctLevel:QRCode.CorrectLevel.M}); }
+  catch(e){ box.innerHTML='<div class="hint">QRの生成に失敗しました</div>'; }
+}
+window.copyViewerUrl=()=>{
+  const url=viewerPageUrl();
+  navigator.clipboard?.writeText(url).then(()=>toast('リンクをコピーしました')).catch(()=>toast('コピーできませんでした'));
+};
+window.printViewerQr=()=>{
+  const url=viewerPageUrl();
+  const w=window.open('','_blank');
+  if(!w){ toast('ポップアップを許可してください'); return; }
+  w.document.write(`<html><head><title>選手用ページQR</title><meta charset="utf-8"></head><body style="font-family:sans-serif;text-align:center;padding:40px">
+    <h2>${esc(teamName)}</h2><p>読み込むと今日の練習・出席が見られます</p><div id="q" style="display:inline-block;margin:20px"></div>
+    <p style="font-size:12px;color:#888;word-break:break-all">${esc(url)}</p>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>
+    <script>new QRCode(document.getElementById('q'),{text:${JSON.stringify(url)},width:240,height:240});setTimeout(()=>window.print(),500);<\/script>
+    </body></html>`);
+  w.document.close();
+};
 
 /* ---------- firestore ---------- */
 function subscribe(uid){
