@@ -279,7 +279,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
   <div class="wrap">
     <div class="today" style="margin-top:6px">
       <div class="sub" id="vDate"></div>
-      <div style="font-size:15px;font-weight:700;margin-top:4px">今日の練習</div>
+      <div style="font-size:15px;font-weight:700;margin-top:4px">練習メニュー・出席</div>
     </div>
 
     <div class="segbar" style="margin-top:14px">
@@ -319,7 +319,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
   </div>
 </header>
 
-<div class="wrap">
+<div class="wrap" id="coachWrap">
 
 <!-- HOME -->
 <section class="view active" id="v-home">
@@ -728,7 +728,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026092501';
+const APP_VER='2026092502';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -780,6 +780,7 @@ function startViewer(){
   $('#gate').classList.remove('show');
   $('#gate').style.display='none';
   document.querySelector('header').style.display='none'; // 先生用ヘッダーを隠す
+  const cw=$('#coachWrap'); if(cw)cw.style.display='none'; // 先生用の本体（ホーム等）を隠す
   const nav=document.querySelector('nav'); if(nav)nav.style.display='none';
   $('#viewerMode').style.display='block';
   $('#vDate').textContent=fmt(todayStr())+'（'+['日','月','火','水','木','金','土'][new Date(todayStr()).getDay()]+'）';
@@ -805,23 +806,32 @@ window.vSwitch=v=>{
   renderViewer();
 };
 function renderViewer(){
-  const box=$('#vBody'); const d=todayStr();
+  const box=$('#vBody'); const today=todayStr();
+  const WD=['日','月','火','水','木','金','土'];
   if(vView==='prac'||vView==='am'){
     const src = vView==='am' ? amPractices : practices;
-    const list = src[d]||[];
-    box.innerHTML = list.length ? list.map(pr=>`
-      <div class="card pad" style="margin-bottom:8px">
-        <div style="white-space:pre-wrap">${esc(pr.text)}</div>
-        <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')}</div>
-      </div>`).join('')
-      : `<div class="empty">${vView==='am'?'今日の朝練':'今日の練習'}メニューはまだありません。</div>`;
-  }else{ // 出席
-    const att = attendance[d];
+    const days=Object.keys(src).filter(d=>src[d]&&src[d].length).sort((a,b)=>a>b?-1:1); // 新しい順
+    if(!days.length){ box.innerHTML=`<div class="empty">${vView==='am'?'朝練':'練習'}メニューはまだありません。</div>`; return; }
+    box.innerHTML=days.map(d=>{
+      const isToday=d===today;
+      const cards=src[d].map(pr=>`
+        <div class="card pad" style="margin-bottom:8px">
+          <div style="white-space:pre-wrap">${esc(pr.text)}</div>
+          <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')}</div>
+        </div>`).join('');
+      return `<div class="daygrp">
+        <div class="dayhd"><span class="dd">${fmt(d)}（${WD[new Date(d).getDay()]}）${isToday?' ・今日':''}</span><span class="ct">${src[d].length}件</span><span class="ln"></span></div>
+        <div class="daybody">${cards}</div>
+      </div>`;
+    }).join('');
+  }else{ // 出席（今日）
+    const att = attendance[today];
     if(!players.length){ box.innerHTML='<div class="empty">選手が登録されていません。</div>'; return; }
     const MARK={present:'出席',late:'遅刻',absent:'—'};
     const COL={present:'var(--ok)',late:'var(--warn)',absent:'var(--ink-faint)'};
     const stOf=(id)=>{ const r=att; if(!r)return 'absent'; if(Array.isArray(r))return r.includes(id)?'present':'absent'; return r[id]||'absent'; };
-    box.innerHTML='<div class="plist">'+players.map(p=>{
+    box.innerHTML=`<div class="dayhd" style="margin-bottom:10px"><span class="dd">${fmt(today)}（${WD[new Date(today).getDay()]}）・今日</span><span class="ln"></span></div>`
+      +'<div class="plist">'+players.map(p=>{
       const s=stOf(p.id);
       return `<div class="prow"><div class="avatar">${(p.name||'?').slice(0,1)}</div>
         <div class="meta"><div class="nm">${esc(p.name)}</div></div>
