@@ -497,6 +497,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
       <span id="pracMonthLabel">—</span>
       <button onclick="shiftPracMonth(1)" aria-label="次の月">›</button>
     </div>
+    <button class="btn soft" onclick="printMonthMenus('normal')" style="width:100%;margin-bottom:12px">🖨 この月の練習メニューをPDF出力（通常＋朝練）</button>
     <div id="pracFilter" class="tags" style="margin-bottom:12px"></div>
     <div id="pracRatio"></div>
     <div class="daynav" id="pracDayNav">
@@ -540,6 +541,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
       <span id="amMonthLabel">—</span>
       <button onclick="shiftAmMonth(1)" aria-label="次の月">›</button>
     </div>
+    <button class="btn soft" onclick="printMonthMenus('am')" style="width:100%;margin-bottom:12px">🖨 この月の練習メニューをPDF出力（通常＋朝練）</button>
     <div id="amRatio"></div>
     <div class="daynav" id="amDayNav">
       <button onclick="shiftAmDay(-1)" aria-label="前へ">‹</button>
@@ -757,7 +759,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026092903';
+const APP_VER='2026092904';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -933,6 +935,48 @@ window.printViewerQr=()=>{
     <p style="font-size:12px;color:#888;word-break:break-all">${esc(url)}</p>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>
     <script>new QRCode(document.getElementById('q'),{text:${JSON.stringify(url)},width:240,height:240});setTimeout(()=>window.print(),500);<\/script>
+    </body></html>`);
+  w.document.close();
+};
+/* その月の練習メニュー一覧（通常＋朝練）をPDF用に印刷ウィンドウで出力 */
+window.printMonthMenus=(from)=>{
+  // 対象月：通常タブから押したら通常の表示月、朝練タブからなら朝練の表示月。無ければ今月
+  const ym = (from==='am' ? amHistMonth : pracHistMonth) || todayStr().slice(0,7);
+  const WD=['日','月','火','水','木','金','土'];
+  // その月の日付を集める（通常・朝練いずれかに記録がある日）
+  const daySet=new Set();
+  Object.keys(practices).forEach(d=>{ if(d.slice(0,7)===ym && practices[d] && practices[d].length)daySet.add(d); });
+  Object.keys(amPractices).forEach(d=>{ if(d.slice(0,7)===ym && amPractices[d] && amPractices[d].length)daySet.add(d); });
+  const days=[...daySet].sort(); // 古い順
+  if(!days.length){ toast('この月の練習メニューがありません'); return; }
+  const esc2=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])).replace(/\n/g,'<br>');
+  let rows='';
+  days.forEach(d=>{
+    const wd=WD[new Date(d).getDay()];
+    const dateLabel=`${(+d.split('-')[1])}月${(+d.split('-')[2])}日（${wd}）`;
+    const nm=(practices[d]||[]);
+    const am=(amPractices[d]||[]);
+    const block=(title,list)=> list.length ? `<div style="margin:2px 0 6px"><span style="font-size:12px;font-weight:700;color:#0b8a80">${title}</span></div>`+
+      list.map(pr=>`<div style="margin:0 0 6px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;page-break-inside:avoid">
+        <div style="white-space:pre-wrap">${esc2(pr.text)}</div>
+        ${(pr.cats&&pr.cats.length)?`<div style="margin-top:4px">${pr.cats.map(c=>`<span style="display:inline-block;font-size:11px;background:#eef2f1;color:#0b8a80;padding:2px 8px;border-radius:6px;margin:2px 4px 0 0">${esc2(c)}</span>`).join('')}</div>`:''}
+      </div>`).join('') : '';
+    rows+=`<div style="margin-bottom:14px;page-break-inside:avoid">
+      <div style="font-size:14px;font-weight:700;background:#d3f2ee;color:#0b8a80;padding:5px 10px;border-radius:6px;margin-bottom:6px">${dateLabel}</div>
+      ${block('練習', nm)}
+      ${am.length?block('朝練', am):''}
+    </div>`;
+  });
+  const monthLbl=`${ym.split('-')[0]}年${+ym.split('-')[1]}月`;
+  const w=window.open('','_blank');
+  if(!w){ toast('ポップアップを許可してください'); return; }
+  w.document.write(`<html><head><title>${esc(teamName)} ${monthLbl} 練習メニュー</title><meta charset="utf-8">
+    <style>@page{margin:14mm} body{font-family:'Hiragino Sans','Yu Gothic',sans-serif;color:#222;max-width:720px;margin:0 auto;padding:10px}</style>
+    </head><body>
+    <h2 style="margin:0 0 2px">${esc(teamName)}</h2>
+    <div style="color:#666;font-size:14px;margin-bottom:16px">${monthLbl} 練習メニュー一覧</div>
+    ${rows}
+    <script>setTimeout(()=>window.print(),400);<\/script>
     </body></html>`);
   w.document.close();
 };
