@@ -751,7 +751,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026092503';
+const APP_VER='2026092901';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1536,6 +1536,7 @@ window.addAmPractice=()=>{
 function amMonths(){
   const s=new Set();
   Object.keys(amPractices).forEach(d=>{ if(amPractices[d]&&amPractices[d].length) s.add(d.slice(0,7)); });
+  Object.keys(amAttendance).forEach(d=>{ const r=amAttendance[d]; const has=Array.isArray(r)?r.length:Object.keys(r||{}).length; if(has)s.add(d.slice(0,7)); });
   return [...s].sort((a,b)=>a>b?-1:1);
 }
 window.shiftAmMonth=dir=>{
@@ -1550,8 +1551,13 @@ function renderAmHist(){
   if(!months.length){ wrap.innerHTML='<div class="empty">まだ朝練が記録されていません。上で記録しましょう。</div>'; lbl.textContent='—'; ratio.innerHTML=''; return; }
   if(!amHistMonth || !months.includes(amHistMonth)) amHistMonth=months[0];
   lbl.textContent=monthLabel(amHistMonth);
-  const days=Object.keys(amPractices).filter(d=>d.slice(0,7)===amHistMonth && amPractices[d] && amPractices[d].length).sort((a,b)=>a>b?-1:1);
-  ratio.innerHTML=renderPracRatio(days, amPractices);
+  // その月の対象日＝朝練メニューがある日 ＋ 朝練出席がある日
+  const daySet=new Set();
+  Object.keys(amPractices).forEach(d=>{ if(d.slice(0,7)===amHistMonth && amPractices[d] && amPractices[d].length) daySet.add(d); });
+  Object.keys(amAttendance).forEach(d=>{ if(d.slice(0,7)!==amHistMonth)return; const r=amAttendance[d]; const has=Array.isArray(r)?r.length:Object.keys(r||{}).length; if(has)daySet.add(d); });
+  const days=[...daySet].sort((a,b)=>a>b?-1:1);
+  const menuDays=Object.keys(amPractices).filter(d=>d.slice(0,7)===amHistMonth && amPractices[d] && amPractices[d].length).sort((a,b)=>a>b?-1:1);
+  ratio.innerHTML=renderPracRatio(menuDays, amPractices);
   // 表示日の決定
   if(!amHistDay || !days.includes(amHistDay)) amHistDay = days[0] || null;
   const dl=$('#amDayLabel'); const dp=$('#amDayPick');
@@ -1563,24 +1569,52 @@ function renderAmHist(){
   let html='';
   if(amHistDay){
     const d=amHistDay;
-    const cards=amPractices[d].map((pr,i)=>`
-      <div class="card pad pcard" style="margin-bottom:8px" data-d="${d}" data-idx="${i}" data-src="am"
-           onclick="pcardClick('am','${d}',${i})"
-           ontouchstart="pcardTouchStart(event,'am','${d}',${i})" ontouchmove="pcardTouchMove(event)" ontouchend="pcardTouchEnd(event)">
-        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
-          <div style="flex:1">
-            <div style="white-space:pre-wrap">${esc(pr.text)}</div>
-            <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')||'<span class="hint" style="margin:0">カテゴリなし</span>'}</div>
+    // 朝練メニュー
+    const items=amPractices[d]||[];
+    if(items.length){
+      const cards=items.map((pr,i)=>`
+        <div class="card pad pcard" style="margin-bottom:8px" data-d="${d}" data-idx="${i}" data-src="am"
+             onclick="pcardClick('am','${d}',${i})"
+             ontouchstart="pcardTouchStart(event,'am','${d}',${i})" ontouchmove="pcardTouchMove(event)" ontouchend="pcardTouchEnd(event)">
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+            <div style="flex:1">
+              <div style="white-space:pre-wrap">${esc(pr.text)}</div>
+              <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')||'<span class="hint" style="margin:0">カテゴリなし</span>'}</div>
+            </div>
+            <span style="color:var(--accent-ink);font-size:13px;white-space:nowrap">編集 ›</span>
           </div>
-          <span style="color:var(--accent-ink);font-size:13px;white-space:nowrap">編集 ›</span>
-        </div>
-      </div>`).join('');
-    html=`<p class="hint" style="margin:0 2px 6px">カードを長押しすると同じ日の中で並び替えできます。</p><div class="daybody" data-d="${d}" data-src="am">${cards}</div>`;
+        </div>`).join('');
+      html+=`<p class="hint" style="margin:0 2px 6px">カードを長押しすると同じ日の中で並び替えできます。</p><div class="daybody" data-d="${d}" data-src="am">${cards}</div>`;
+    }
+    // 朝練の出席一覧（その日）
+    html+=renderAmAttnList(d);
   }
   wrap.innerHTML=html;
 }
+/* 指定日の朝練出席一覧HTML（出席/遅刻のみ表示＋人数） */
+function renderAmAttnList(d){
+  if(!players.length)return '';
+  const stOf=(id)=>{ const r=amAttendance[d]; if(!r)return 'absent'; if(Array.isArray(r))return r.includes(id)?'present':'absent'; return r[id]||'absent'; };
+  const MARK={present:'出席',late:'遅刻',absent:'欠席'};
+  const COL={present:'var(--ok)',late:'var(--warn)',absent:'var(--ink-faint)'};
+  const came=players.filter(p=>{const s=stOf(p.id);return s==='present'||s==='late';}).length;
+  const rows=players.map(p=>{
+    const s=stOf(p.id);
+    return `<div class="prow"><div class="avatar">${initials(p.name)}</div>
+      <div class="meta"><div class="nm">${esc(p.name)}</div></div>
+      <div class="cnt" style="color:${COL[s]}">${MARK[s]}</div></div>`;
+  }).join('');
+  return `<h2 class="section" style="margin-top:18px">この日の朝練出席（${came}/${players.length}名）</h2><div class="plist">${rows}</div>`;
+}
+/* 朝練の対象日（メニュー or 出席がある日・全期間・古い順） */
+function amAllDays(){
+  const s=new Set();
+  Object.keys(amPractices).forEach(d=>{ if(amPractices[d]&&amPractices[d].length) s.add(d); });
+  Object.keys(amAttendance).forEach(d=>{ const r=amAttendance[d]; const has=Array.isArray(r)?r.length:Object.keys(r||{}).length; if(has)s.add(d); });
+  return [...s].sort();
+}
 window.shiftAmDay=dir=>{
-  const allDays=Object.keys(amPractices).filter(d=>amPractices[d]&&amPractices[d].length).sort();
+  const allDays=amAllDays();
   if(!allDays.length)return;
   let i=allDays.indexOf(amHistDay);
   if(i<0){ i = dir>0 ? allDays.length-1 : 0; amHistDay=allDays[i]; }
