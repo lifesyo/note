@@ -757,7 +757,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026092902';
+const APP_VER='2026092903';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -2178,26 +2178,68 @@ window.exportForAI=(scope)=>{
   if(!players.length){toast('選手がいません');return;}
   const ym = scope==='month' ? (attendMonth||todayStr().slice(0,7)) : null;
   const periodLabel = ym ? monthLabel(ym) : '全期間';
+  // ---- 定量サマリーの集計（出席率・ノート提出率・朝練参加） ----
+  // 対象月の一覧（月指定ならその月だけ、全期間なら全月）
+  const targetMonths = ym ? [ym] : allMonths();
+  // 通常練習：出席日数・活動日数、ノート提出日数・練習日数
+  function playerStats(p){
+    let attCame=0, attTotal=0;   // 出席（出席+遅刻）／活動日
+    let noteOk=0, noteTotal=0;    // 提出(◎○)／全体練習日
+    let amCame=0, amTotal=0;      // 朝練 出席／朝練日
+    targetMonths.forEach(m=>{
+      const act=activeDatesInMonth(m);
+      attTotal+=act.length;
+      act.forEach(d=>{ const s=attnStatus(p.id,d); if(s==='present'||s==='late')attCame++; });
+      const pdays=teamPracticeDates(m);
+      noteTotal+=pdays.length;
+      pdays.forEach(d=>{ const st=statusOf(p,d); if(st==='ontime'||st==='excused')noteOk++; });
+      // 朝練日＝その月に朝練出席入力 or 朝練メニューがある日
+      const amDaySet=new Set();
+      Object.keys(amAttendance).forEach(d=>{ if(d.slice(0,7)!==m)return; const r=amAttendance[d]; const has=Array.isArray(r)?r.length:Object.keys(r||{}).length; if(has)amDaySet.add(d); });
+      Object.keys(amPractices).forEach(d=>{ if(d.slice(0,7)===m && amPractices[d] && amPractices[d].length)amDaySet.add(d); });
+      amDaySet.forEach(d=>{ amTotal++; const s=amAttendStatus(p.id,d); if(s==='present'||s==='late')amCame++; });
+    });
+    return {attCame,attTotal,noteOk,noteTotal,amCame,amTotal};
+  }
+  const pct=(n,d)=> d>0 ? Math.round(n/d*100)+'%' : '—';
   // 依頼文（プロンプト）
   const prompt =
 `あなたは中学女子バスケットボール部のコーチを補佐するアシスタントです。指導観は「認知→判断→選択→実行」（状況を見る→どうすべきか考える→選ぶ→実際に動く）です。
-以下は${periodLabel}の部員のバスケットノートの記録です。選手ごとに、次の観点で成長過程を言語化してください。
+以下は${periodLabel}の部員のデータです。各選手について、次の2軸で総合的に分析してください。
+
+【A. 取り組みの姿勢（定量データ）】
+- 出席率、ノート提出率、朝練参加（朝練は任意参加）を踏まえて、練習・ノートへの取り組み姿勢を評価。
+- 朝練は任意なので「参加している選手はその積極性を加点評価」し、不参加をマイナス評価しないこと。
+- 出席率が高くノート提出も安定している選手、逆に波がある選手など、姿勢の傾向を言語化。
+
+【B. ノートの内容（質的データ）】
 1. 記述が「認知・判断・選択・実行」のどこに触れているかの変化（実行中心→認知・判断が増えると思考が深まったサイン）
 2. 振り返りの質（事実の記述だけか、原因分析や次への課題まで書けているか）
 3. 使う言葉の変化（気合い中心→具体的・戦術的な言葉へ）
 4. 継続性・記述量
-最後に、各選手へフィードバック面談で伝えるとよい「具体的に成長した点」を、本人の記述を根拠として2〜3行でまとめてください。
+
+最後に、各選手へフィードバック面談で伝えるとよい「具体的に成長した点」と「次に意識するとよい点」を、データと本人の記述を根拠として3〜4行でまとめてください。姿勢（A）と内容（B）の両面から触れること。
 
 === 記録ここから ===
 `;
   // 本文（全員ぶん）
   let body='';
   players.forEach(p=>{
+    const st=playerStats(p);
     const notes = p.notes
       .filter(n => !ym || n.d.slice(0,7)===ym)
       .filter(n => n.s && n.s.trim())      // 本文のある記録だけ
       .sort((a,b)=>a.d<b.d?-1:1);
-    body += `\n【${p.name}】（${periodLabel}に本文のある記録: ${notes.length}件）\n`;
+    body += `\n【${p.name}】\n`;
+    body += `▼ データ（${periodLabel}）\n`;
+    body += `  出席率: ${pct(st.attCame,st.attTotal)}（${st.attCame}/${st.attTotal}日）\n`;
+    body += `  ノート提出率: ${pct(st.noteOk,st.noteTotal)}（${st.noteOk}/${st.noteTotal}日）\n`;
+    if(st.amTotal>0){
+      body += `  朝練参加: ${st.amCame}/${st.amTotal}日（任意参加）\n`;
+    }else{
+      body += `  朝練参加: この期間の朝練記録なし\n`;
+    }
+    body += `▼ ノート（本文のある記録: ${notes.length}件）\n`;
     if(!notes.length){ body += '（本文の記録なし）\n'; return; }
     notes.forEach(n=>{
       const tags=(n.k||[]).map(k=>K[k]).join('・')||'—';
