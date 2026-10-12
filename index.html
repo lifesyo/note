@@ -759,7 +759,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026092904';
+const APP_VER='2026101301';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1776,7 +1776,7 @@ let pmTarget=null;      // {d, idx}
 let pmCats=[];          // 編集中のカテゴリ
 let pmScrollY=0;        // モーダルを開いた時点のスクロール位置
 window.openPracEdit=(d,idx)=>{ openPracEditSrc(practices,'normal',d,idx); };
-function openPracEditSrc(src, view, d, idx){
+window.openPracEditSrc=function(src, view, d, idx){
   const pr=(src[d]||[])[idx]; if(!pr)return;
   pmScrollY=window.scrollY; // fixed化される前に保存
   pmTarget={d,idx,src,view};
@@ -2118,12 +2118,20 @@ function renderAmAttendTable(){
       const s=amAttendStatus(p.id,d);
       const mark = s==='present'?'出' : s==='late'?'遅' : '−';
       const col  = s==='present'?'var(--ok)' : s==='late'?'var(--warn)' : 'var(--ink-faint)';
-      return `<td><div class="gcell"><span class="at" style="color:${col};padding:8px 0">${mark}</span></div></td>`;
+      return `<td><div class="gcell" style="cursor:pointer" onclick="toggleAmAttendCell('${p.id}','${d}')"><span class="at" style="color:${col};padding:8px 0">${mark}</span></div></td>`;
     }).join('');
     return `<tr><td class="anm">${esc(p.name)}</td><td class="art">${arateHtml}</td>${cells}</tr>`;
   }).join('');
-  wrap.innerHTML=`<div class="leg"><span><b>出＝出席 遅＝遅刻 −＝欠席</b></span></div><table class="attend">${head}${rows}</table>`;
+  wrap.innerHTML=`<div class="leg"><span><b>出＝出席 遅＝遅刻 −＝欠席</b></span><span style="color:var(--ink-faint)">タップで 出席→遅刻→欠席 と切替</span></div><table class="attend">${head}${rows}</table>`;
 }
+/* 一覧タブの朝練出席表：セルをタップして出席→遅刻→欠席を切替（入れ忘れ修正用） */
+window.toggleAmAttendCell=(id,d)=>{
+  const cur=amAttendStatus(id,d);
+  const next={absent:'present',present:'late',late:'absent'}[cur];
+  setAmAttn(id,d,next);
+  save();
+  renderAmAttendTable();
+};
 /* セル操作：短タップ＝循環、長押し＝メニュー。touchとclickの競合を防ぐ */
 let cellPressTimer=null, cellLongFired=false, cellTouchActive=false, cellMoved=false;
 window.cellTouchStart=(ev,id,d)=>{
