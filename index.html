@@ -236,6 +236,9 @@ nav button.on svg{stroke-width:2.2}
 .modal-head{position:sticky;top:0;background:var(--paper);display:flex;align-items:center;justify-content:space-between;padding:calc(16px + env(safe-area-inset-top)) 0 12px;margin-bottom:6px;font-weight:700;font-size:17px;z-index:1}
 .modal-x{background:none;border:none;font-size:26px;line-height:1;color:var(--ink-soft);cursor:pointer;font-family:inherit}
 .noterow-del{cursor:pointer;font-size:13px;font-weight:600;opacity:.85;white-space:nowrap}
+.ordbtn{width:30px;height:30px;border:1px solid var(--edge);background:var(--card);color:var(--accent-ink);border-radius:8px;font-size:15px;line-height:1;cursor:pointer;font-family:inherit}
+.ordbtn:active{background:var(--paper-2)}
+.ordbtn:disabled{opacity:.3;cursor:default}
 body.modal-lock{overflow:hidden;position:fixed;width:100%}
 table.attend{border-collapse:collapse;font-size:14px;min-width:100%}
 table.attend th,table.attend td{text-align:center;white-space:nowrap;border:1px solid var(--edge)}
@@ -759,7 +762,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026101301';
+const APP_VER='2026101302';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1331,6 +1334,14 @@ window.delPractice=(idx)=>{
   if(!arr.length)delete practices[pracSelDate];
   save();renderPrac();
 };
+/* この日の練習の順番を入れ替え（dir=-1上へ / 1下へ） */
+window.movePractice=(idx,dir)=>{
+  const arr=practices[pracSelDate];if(!arr)return;
+  const ni=idx+dir;
+  if(ni<0||ni>=arr.length)return;
+  [arr[idx],arr[ni]]=[arr[ni],arr[idx]];
+  save();renderPrac();
+};
 function renderPrac(){
   renderPracCatTags();
   renderMenuTplList('normal');
@@ -1343,8 +1354,16 @@ function renderPrac(){
           <div style="white-space:pre-wrap">${esc(pr.text)}</div>
           <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')||'<span class="hint" style="margin:0">カテゴリなし</span>'}</div>
         </div>
-        <span class="noterow-del" style="color:var(--accent-ink)" onclick="openPracEditSrc(practices,'recvnormal',pracSelDate,${i})">編集</span>
-        <span class="noterow-del" style="color:var(--exe)" onclick="delPractice(${i})">削除</span>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+          <div style="display:flex;gap:4px">
+            <button class="ordbtn" ${i===0?'disabled':''} onclick="movePractice(${i},-1)" aria-label="上へ">↑</button>
+            <button class="ordbtn" ${i===arr.length-1?'disabled':''} onclick="movePractice(${i},1)" aria-label="下へ">↓</button>
+          </div>
+          <div style="display:flex;gap:10px">
+            <span class="noterow-del" style="color:var(--accent-ink)" onclick="openPracEditSrc(practices,'recvnormal',pracSelDate,${i})">編集</span>
+            <span class="noterow-del" style="color:var(--exe)" onclick="delPractice(${i})">削除</span>
+          </div>
+        </div>
       </div>
     </div>`).join('') : '<div class="empty">この日の練習はまだ記録されていません。</div>';
   // カテゴリ別集計（表示中の練習日の月）
