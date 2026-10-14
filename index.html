@@ -352,14 +352,8 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
   <div id="h-pending" class="plist"></div>
 </section>
 
-<!-- RECEPTION（ノート受付 ＋ 出席チェック） -->
+<!-- RECEPTION（ノート受付のみ） -->
 <section class="view" id="v-recv">
-  <div class="segbar">
-    <button class="seg on" id="seg-note" onclick="switchRecv('note')">ノート受付</button>
-    <button class="seg" id="seg-attn" onclick="switchRecv('attn')">出席</button>
-    <button class="seg" id="seg-prac" onclick="switchRecv('prac')">練習記録</button>
-  </div>
-
   <!-- ノート受付 -->
   <div id="recv-note">
     <div class="field" style="margin-bottom:14px">
@@ -375,55 +369,6 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
     <h2 class="section">選手をタップして提出記録</h2>
     <div id="quickpick" class="plist"></div>
     </div>
-  </div>
-
-  <!-- 出席チェック -->
-  <div id="recv-attn" style="display:none">
-    <div class="field" style="margin-bottom:14px">
-      <label>日付</label>
-      <input type="date" id="attnDate" onchange="onAttnDateChange()">
-    </div>
-    <div style="display:flex;gap:10px;margin-bottom:14px">
-      <button class="btn soft" onclick="attnAll(true)">全員出席</button>
-      <button class="btn soft" onclick="attnAll(false)">全員リセット</button>
-    </div>
-    <div id="attnDone" class="plist" style="margin-bottom:12px"></div>
-    <h2 class="section">タップで 出席 → 遅刻 → 欠席 と切替</h2>
-    <div id="attnList" class="plist"></div>
-  </div>
-
-  <!-- 練習記録 -->
-  <div id="recv-prac" style="display:none">
-    <div class="field" style="margin-bottom:14px">
-      <label>練習日</label>
-      <input type="date" id="pracDate" onchange="onPracDateChange()">
-    </div>
-    <div class="field">
-      <label>練習メニュー</label>
-      <button class="btn soft" onclick="openMenuPicker('normal')" style="width:100%;margin-bottom:8px">＋ 登録メニューから選ぶ</button>
-      <textarea id="pracText" rows="2" placeholder="例：3メンでのフィニッシュ、1on1、ハーフコートDF"></textarea>
-    </div>
-    <div class="field">
-      <label>カテゴリ（複数選択可・タップで切替）</label>
-      <div id="pracCatTags" class="tags"></div>
-      <div class="addrow" style="margin-top:8px">
-        <input type="text" id="newCat" placeholder="新しいカテゴリを作る" onkeydown="if(event.key==='Enter')addCat()">
-        <button class="btn soft" onclick="addCat()">追加</button>
-      </div>
-    </div>
-    <button class="btn primary" onclick="addPractice()">この練習を記録する</button>
-    <h2 class="section">この日の練習</h2>
-    <div id="pracList"></div>
-    <h2 class="section">登録メニューの管理</h2>
-    <p class="hint" style="text-align:left;margin-top:0">よく使う練習メニューを登録しておくと、上のチップからタップで呼び出せます。</p>
-    <div class="addrow">
-      <input type="text" id="newMenuTpl" placeholder="登録するメニュー名" onkeydown="if(event.key==='Enter')addMenuTpl('normal')">
-      <button class="btn soft" onclick="addMenuTpl('normal')">登録</button>
-    </div>
-    <button class="btn soft" onclick="importMenusFromHistory('normal')" style="width:100%;margin-top:8px">これまでの練習からまとめて登録</button>
-    <div id="menuTplList" style="margin-top:10px"></div>
-    <h2 class="section">カテゴリ別の回数（この月）</h2>
-    <div id="pracStats"></div>
   </div>
 </section>
 
@@ -490,7 +435,58 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
 <section class="view" id="v-prac">
   <div class="segbar">
     <button class="seg on" id="pseg-normal" onclick="switchPracView('normal')">通常練習</button>
+    <button class="seg" id="pseg-rec" onclick="switchPracView('rec')">練習記録</button>
+    <button class="seg" id="pseg-attn" onclick="switchPracView('attn')">出席</button>
     <button class="seg" id="pseg-am" onclick="switchPracView('am')">朝練</button>
+  </div>
+
+  <!-- 練習記録（入力） -->
+  <div id="prac-rec" style="display:none">
+    <div class="field" style="margin-bottom:14px">
+      <label>練習日</label>
+      <input type="date" id="pracDate" onchange="onPracDateChange()">
+    </div>
+    <div class="field">
+      <label>練習メニュー</label>
+      <button class="btn soft" onclick="openMenuPicker('normal')" style="width:100%;margin-bottom:8px">＋ 登録メニューから選ぶ</button>
+      <textarea id="pracText" rows="2" placeholder="例：3メンでのフィニッシュ、1on1、ハーフコートDF"></textarea>
+    </div>
+    <div class="field">
+      <label>カテゴリ（複数選択可・タップで切替）</label>
+      <div id="pracCatTags" class="tags"></div>
+      <div class="addrow" style="margin-top:8px">
+        <input type="text" id="newCat" placeholder="新しいカテゴリを作る" onkeydown="if(event.key==='Enter')addCat()">
+        <button class="btn soft" onclick="addCat()">追加</button>
+      </div>
+    </div>
+    <button class="btn primary" onclick="addPractice()">この練習を記録する</button>
+    <h2 class="section">この日の練習</h2>
+    <div id="pracList"></div>
+    <h2 class="section">登録メニューの管理</h2>
+    <p class="hint" style="text-align:left;margin-top:0">よく使う練習メニューを登録しておくと、上のチップからタップで呼び出せます。</p>
+    <div class="addrow">
+      <input type="text" id="newMenuTpl" placeholder="登録するメニュー名" onkeydown="if(event.key==='Enter')addMenuTpl('normal')">
+      <button class="btn soft" onclick="addMenuTpl('normal')">登録</button>
+    </div>
+    <button class="btn soft" onclick="importMenusFromHistory('normal')" style="width:100%;margin-top:8px">これまでの練習からまとめて登録</button>
+    <div id="menuTplList" style="margin-top:10px"></div>
+    <h2 class="section">カテゴリ別の回数（この月）</h2>
+    <div id="pracStats"></div>
+  </div>
+
+  <!-- 出席チェック -->
+  <div id="prac-attn" style="display:none">
+    <div class="field" style="margin-bottom:14px">
+      <label>日付</label>
+      <input type="date" id="attnDate" onchange="onAttnDateChange()">
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <button class="btn soft" onclick="attnAll(true)">全員出席</button>
+      <button class="btn soft" onclick="attnAll(false)">全員リセット</button>
+    </div>
+    <div id="attnDone" class="plist" style="margin-bottom:12px"></div>
+    <h2 class="section">タップで 出席 → 遅刻 → 欠席 と切替</h2>
+    <div id="attnList" class="plist"></div>
   </div>
 
   <!-- 通常練習 -->
@@ -762,7 +758,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026101302';
+const APP_VER='2026101401';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1060,7 +1056,7 @@ window.go=v=>{
   if(v==='cards')renderCards();
   if(v==='recv')startReception();
   if(v==='attend')renderAttend();
-  if(v==='prac'){ if(pracView==='am') renderAmAll(); else renderPracHist(); }
+  if(v==='prac'){ switchPracView(pracView); }
   if(v==='settings')renderUser();
 };
 
@@ -1084,22 +1080,8 @@ let pracSelDate=todayStr();
 let pracSelCats=[]; // 入力中の練習に付けるカテゴリ
 function startReception(){
   const dp=$('#recvDate'); if(dp&&!dp.value)dp.value=recvSelDate;
-  const ap=$('#attnDate'); if(ap&&!ap.value)ap.value=attnSelDate;
-  const pp=$('#pracDate'); if(pp&&!pp.value)pp.value=pracSelDate;
-  switchRecv(recvMode);
+  startNoteRecv();
 }
-window.switchRecv=mode=>{
-  recvMode=mode;
-  $('#seg-note').classList.toggle('on',mode==='note');
-  $('#seg-attn').classList.toggle('on',mode==='attn');
-  $('#seg-prac').classList.toggle('on',mode==='prac');
-  $('#recv-note').style.display=mode==='note'?'block':'none';
-  $('#recv-attn').style.display=mode==='attn'?'block':'none';
-  $('#recv-prac').style.display=mode==='prac'?'block':'none';
-  if(mode==='note'){ startNoteRecv(); }
-  else if(mode==='attn'){ stopScan(); renderAttn(); }
-  else { stopScan(); renderPrac(); }
-};
 function startNoteRecv(){
   renderNotelessUI();
   renderRecvDone();
@@ -1347,25 +1329,23 @@ function renderPrac(){
   renderMenuTplList('normal');
   // この日の練習一覧
   const arr=practices[pracSelDate]||[];
-  $('#pracList').innerHTML = arr.length ? arr.map((pr,i)=>`
-    <div class="card pad" style="margin-bottom:8px">
-      <div style="display:flex;justify-content:space-between;gap:8px">
-        <div style="flex:1">
-          <div style="white-space:pre-wrap">${esc(pr.text)}</div>
-          <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')||'<span class="hint" style="margin:0">カテゴリなし</span>'}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-          <div style="display:flex;gap:4px">
-            <button class="ordbtn" ${i===0?'disabled':''} onclick="movePractice(${i},-1)" aria-label="上へ">↑</button>
-            <button class="ordbtn" ${i===arr.length-1?'disabled':''} onclick="movePractice(${i},1)" aria-label="下へ">↓</button>
+  if(arr.length){
+    const cards=arr.map((pr,i)=>`
+      <div class="card pad pcard" style="margin-bottom:8px" data-d="${pracSelDate}" data-idx="${i}" data-src="recvnormal"
+           onclick="pcardClick('recvnormal','${pracSelDate}',${i})"
+           ontouchstart="pcardTouchStart(event,'recvnormal','${pracSelDate}',${i})" ontouchmove="pcardTouchMove(event)" ontouchend="pcardTouchEnd(event)">
+        <div style="display:flex;justify-content:space-between;gap:8px">
+          <div style="flex:1">
+            <div style="white-space:pre-wrap">${esc(pr.text)}</div>
+            <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')||'<span class="hint" style="margin:0">カテゴリなし</span>'}</div>
           </div>
-          <div style="display:flex;gap:10px">
-            <span class="noterow-del" style="color:var(--accent-ink)" onclick="openPracEditSrc(practices,'recvnormal',pracSelDate,${i})">編集</span>
-            <span class="noterow-del" style="color:var(--exe)" onclick="delPractice(${i})">削除</span>
-          </div>
+          <span style="color:var(--accent-ink);font-size:13px;white-space:nowrap">編集 ›</span>
         </div>
-      </div>
-    </div>`).join('') : '<div class="empty">この日の練習はまだ記録されていません。</div>';
+      </div>`).join('');
+    $('#pracList').innerHTML = `<p class="hint" style="margin:0 2px 6px">カードを長押しすると並び替えできます。タップで編集。</p><div class="daybody" data-d="${pracSelDate}" data-src="recvnormal">${cards}</div>`;
+  } else {
+    $('#pracList').innerHTML = '<div class="empty">この日の練習はまだ記録されていません。</div>';
+  }
   // カテゴリ別集計（表示中の練習日の月）
   const ym=pracSelDate.slice(0,7);
   const count={};
@@ -1537,11 +1517,17 @@ let amHistDay=null;
 window.switchPracView=v=>{
   pracView=v;
   $('#pseg-normal').classList.toggle('on', v==='normal');
+  $('#pseg-rec').classList.toggle('on', v==='rec');
+  $('#pseg-attn').classList.toggle('on', v==='attn');
   $('#pseg-am').classList.toggle('on', v==='am');
   $('#prac-normal').style.display = v==='normal'?'block':'none';
+  $('#prac-rec').style.display = v==='rec'?'block':'none';
+  $('#prac-attn').style.display = v==='attn'?'block':'none';
   $('#prac-am').style.display = v==='am'?'block':'none';
-  if(v==='normal') renderPracHist();
-  else renderAmAll();
+  if(v==='normal'){ renderPracHist(); }
+  else if(v==='rec'){ const pp=$('#pracDate'); if(pp&&!pp.value)pp.value=pracSelDate; renderPrac(); }
+  else if(v==='attn'){ const ap=$('#attnDate'); if(ap&&!ap.value)ap.value=attnSelDate; renderAttn(); }
+  else { renderAmAll(); }
 };
 function renderAmAll(){
   const dp=$('#amDate'); if(dp&&!dp.value)dp.value=amSelDate;
@@ -1701,7 +1687,9 @@ window.pcardClick=(src,d,idx)=>{
   // touchで処理済みならスキップ（PCクリックのみ）
   if(dragState && dragState.fired){ dragState=null; return; }
   if(dragState){ dragState=null; }
-  if(src==='am') openAmEdit(d,idx); else openPracEdit(d,idx);
+  if(src==='am') openAmEdit(d,idx);
+  else if(src==='recvnormal') openPracEditKind('recvnormal',d,idx);
+  else openPracEdit(d,idx);
 };
 window.pcardTouchStart=(ev,src,d,idx)=>{
   const el=ev.currentTarget;
@@ -1785,7 +1773,7 @@ window.pcardTouchEnd=(ev)=>{
   const st=dragState; dragState=null;
   const sy=window.scrollY;
   save();
-  if(src==='am') renderAmHist(); else renderPracHist();
+  if(src==='am') renderAmHist(); else if(src==='recvnormal') renderPrac(); else renderPracHist();
   window.scrollTo(0,sy);
   toast('順番を変えました');
 };
@@ -1795,6 +1783,10 @@ let pmTarget=null;      // {d, idx}
 let pmCats=[];          // 編集中のカテゴリ
 let pmScrollY=0;        // モーダルを開いた時点のスクロール位置
 window.openPracEdit=(d,idx)=>{ openPracEditSrc(practices,'normal',d,idx); };
+window.openPracEditKind=(kind,d,idx)=>{
+  const src = kind==='am' ? amPractices : practices;
+  openPracEditSrc(src, kind, d, idx);
+};
 window.openPracEditSrc=function(src, view, d, idx){
   const pr=(src[d]||[])[idx]; if(!pr)return;
   pmScrollY=window.scrollY; // fixed化される前に保存
@@ -2210,9 +2202,15 @@ function setCellStatus(id,d,st){
 function refreshCurrentView(){
   const attendActive=$('#v-attend').classList.contains('active');
   const recvActive=$('#v-recv').classList.contains('active');
+  const pracActive=$('#v-prac').classList.contains('active');
   const detailActive=$('#v-detail').classList.contains('active');
   if(attendActive)renderAttend();
   if(recvActive && recvMode==='note'){ renderRecvDone(); $('#quickpick').innerHTML=players.map(pp=>recvRow(pp)).join(''); }
+  if(pracActive){
+    if(pracView==='rec')renderPrac();
+    else if(pracView==='attn')renderAttn();
+    else if(pracView==='am')renderAmAttn();
+  }
   if(detailActive && detailPlayerId)openDetail(detailPlayerId);
 }
 /* 4択メニュー */
