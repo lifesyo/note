@@ -463,14 +463,33 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
     <button class="btn primary" onclick="addPractice()">この練習を記録する</button>
     <h2 class="section">この日の練習</h2>
     <div id="pracList"></div>
-    <h2 class="section">登録メニューの管理</h2>
-    <p class="hint" style="text-align:left;margin-top:0">よく使う練習メニューを登録しておくと、上のチップからタップで呼び出せます。</p>
-    <div class="addrow">
-      <input type="text" id="newMenuTpl" placeholder="登録するメニュー名" onkeydown="if(event.key==='Enter')addMenuTpl('normal')">
-      <button class="btn soft" onclick="addMenuTpl('normal')">登録</button>
+
+    <h2 class="section">この日のメモ・リンク</h2>
+    <p class="hint" style="text-align:left;margin-top:0">この練習日に紐づくメモとリンク。選手用ページの「練習」タブ（この日）に表示されます（閲覧のみ）。</p>
+    <div class="field">
+      <textarea id="pracDayMemo" rows="3" placeholder="例：今日は切り返しを意識。次回までに動画を見ておくこと。"></textarea>
+      <button class="btn soft" onclick="savePracDayMemo()" style="width:100%;margin-top:8px">この日のメモを保存</button>
     </div>
-    <button class="btn soft" onclick="importMenusFromHistory('normal')" style="width:100%;margin-top:8px">これまでの練習からまとめて登録</button>
-    <div id="menuTplList" style="margin-top:10px"></div>
+    <div class="field">
+      <input type="text" id="pracLinkTitle" placeholder="リンクの表示名（例：お手本の動画）" style="margin-bottom:8px">
+      <div class="addrow">
+        <input type="text" id="pracLinkUrl" placeholder="https://..." onkeydown="if(event.key==='Enter')addPracDayLink()">
+        <button class="btn soft" onclick="addPracDayLink()">追加</button>
+      </div>
+    </div>
+    <div id="pracDayLinkList" style="margin-top:4px"></div>
+
+    <h2 class="section">登録メニューの管理</h2>
+    <button class="btn soft" id="menuMgrToggle" onclick="toggleMenuMgr('normal')" style="width:100%">⚙ 登録メニューを管理する</button>
+    <div id="menuMgrBox" style="display:none;margin-top:10px">
+      <p class="hint" style="text-align:left;margin-top:0">よく使う練習メニューを登録しておくと、上の「登録メニューから選ぶ」でタップ呼び出しできます。</p>
+      <div class="addrow">
+        <input type="text" id="newMenuTpl" placeholder="登録するメニュー名" onkeydown="if(event.key==='Enter')addMenuTpl('normal')">
+        <button class="btn soft" onclick="addMenuTpl('normal')">登録</button>
+      </div>
+      <button class="btn soft" onclick="importMenusFromHistory('normal')" style="width:100%;margin-top:8px">これまでの練習からまとめて登録</button>
+      <div id="menuTplList" style="margin-top:10px"></div>
+    </div>
     <h2 class="section">カテゴリ別の回数（この月）</h2>
     <div id="pracStats"></div>
   </div>
@@ -775,13 +794,15 @@ let noteless={};   // { 'YYYY-MM-DD': true }。ノート提出を求めない日
 let practiceCats=[]; // 作成済みカテゴリ名のリスト
 let menuTemplates=[]; // 登録した練習メニュー [{text:'...', cats:[...]}]（旧形式=文字列も可）
 let amMenuTemplates=[]; // 朝練の登録メニュー
-let coachLinks=[]; // 選手に共有するリンク [{title:'...', url:'...'}]
-let coachMemo=''; // 選手向けのコーチからのメモ（一方通行・閲覧のみ）
+let coachLinks=[]; // 選手に共有するリンク [{title:'...', url:'...'}]（全体・設定画面）
+let coachMemo=''; // 選手向けのコーチからのメモ（全体・設定画面）
+let pracMemo={}; // { 'YYYY-MM-DD': 'メモ' } その日の練習に紐づくメモ（閲覧のみ）
+let pracLinks={}; // { 'YYYY-MM-DD': [{title,url}] } その日の練習に紐づくリンク（閲覧のみ）
 let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026101701';
+const APP_VER='2026101702';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -850,6 +871,8 @@ function startViewer(){
       amAttendance=(d.amAttendance&&typeof d.amAttendance==='object')?d.amAttendance:{};
       coachLinks=Array.isArray(d.coachLinks)?d.coachLinks.filter(l=>l&&l.url).map(l=>({title:l.title||'',url:l.url})):[];
       coachMemo=(typeof d.coachMemo==='string')?d.coachMemo:'';
+      pracMemo=(d.pracMemo&&typeof d.pracMemo==='object')?d.pracMemo:{};
+      pracLinks=(d.pracLinks&&typeof d.pracLinks==='object')?d.pracLinks:{};
       $('#vTeamTag').textContent=teamName;
     }
     renderViewer();
@@ -916,12 +939,32 @@ function renderViewer(){
   if(vView==='prac'||vView==='am'){
     const src = vView==='am' ? amPractices : practices;
     const list = src[vSelDate]||[];
-    box.innerHTML = list.length ? list.map(pr=>`
+    let html = list.length ? list.map(pr=>`
       <div class="card pad" style="margin-bottom:8px">
         <div style="white-space:pre-wrap">${esc(pr.text)}</div>
         <div class="tg" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${(pr.cats||[]).map(c=>`<span class="wt">${esc(c)}</span>`).join('')}</div>
       </div>`).join('')
       : `<div class="empty">この日の${vView==='am'?'朝練':'練習'}メニューはありません。‹ › で他の日、日付をタップでカレンダー。</div>`;
+    // 通常練習の日に紐づくメモ・リンク（閲覧のみ）
+    if(vView==='prac'){
+      const memo = pracMemo[vSelDate];
+      if(memo && memo.trim()){
+        html += `<div class="card pad" style="margin-bottom:8px;border-left:4px solid var(--accent-ink)">
+          <div style="font-size:13px;font-weight:700;color:var(--accent-ink);margin-bottom:6px">コーチからのメモ</div>
+          <div style="white-space:pre-wrap;line-height:1.6">${esc(memo)}</div>
+        </div>`;
+      }
+      const dlinks = pracLinks[vSelDate]||[];
+      html += dlinks.map(l=>`
+        <a class="card pad" href="${esc(l.url)}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;text-decoration:none;color:inherit">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700">${esc(l.title||l.url)}</div>
+            <div class="small" style="color:var(--ink-faint);word-break:break-all">${esc(l.url)}</div>
+          </div>
+          <span style="color:var(--accent-ink);font-size:18px;white-space:nowrap">↗</span>
+        </a>`).join('');
+    }
+    box.innerHTML = html;
   }else{ // 出席
     const att = attendance[vSelDate];
     if(!players.length){ box.innerHTML='<div class="empty">選手が登録されていません。</div>'; return; }
@@ -1084,6 +1127,8 @@ function subscribe(uid){
       if(Array.isArray(d.amMenuTemplates))amMenuTemplates=d.amMenuTemplates.map(t=> typeof t==='string' ? {text:t,cats:[]} : {text:t.text||'',cats:Array.isArray(t.cats)?t.cats:[]});
       if(Array.isArray(d.coachLinks))coachLinks=d.coachLinks.filter(l=>l&&l.url).map(l=>({title:l.title||'',url:l.url}));
       if(typeof d.coachMemo==='string')coachMemo=d.coachMemo;
+      if(d.pracMemo&&typeof d.pracMemo==='object')pracMemo=d.pracMemo;
+      if(d.pracLinks&&typeof d.pracLinks==='object')pracLinks=d.pracLinks;
       if(d.seq)seq=d.seq;
       $('#teamTag').textContent=teamName;
       if(dedupeEmptyNotes())save(); // 同日の空記録（受付チェックとノートの二重）を掃除
@@ -1100,7 +1145,7 @@ async function save(){
   if(!currentUser)return;
   setSync('syncing');
   try{
-    await setDoc(doc(db,'noteiq',currentUser.uid),{players,teamName,attendance,practices,amPractices,amAttendance,noteless,practiceCats,menuTemplates,amMenuTemplates,coachLinks,coachMemo,seq,updatedAt:new Date().toISOString()});
+    await setDoc(doc(db,'noteiq',currentUser.uid),{players,teamName,attendance,practices,amPractices,amAttendance,noteless,practiceCats,menuTemplates,amMenuTemplates,coachLinks,coachMemo,pracMemo,pracLinks,seq,updatedAt:new Date().toISOString()});
     setSync('synced');
   }catch(e){console.error(e);setSync('error');toast('⚠️ 保存に失敗しました');}
 }
@@ -1321,6 +1366,49 @@ function renderMenuTplList(kind){
       </div>
     </div>`).join('');
 }
+window.toggleMenuMgr=(kind)=>{
+  const box=$(kind==='am'?'#amMenuMgrBox':'#menuMgrBox');
+  const btn=$(kind==='am'?'#amMenuMgrToggle':'#menuMgrToggle');
+  if(!box)return;
+  const open = box.style.display==='none';
+  box.style.display = open ? 'block' : 'none';
+  if(btn) btn.textContent = open ? '⚙ 登録メニューの管理を閉じる' : '⚙ 登録メニューを管理する';
+};
+/* ---- その日の練習に紐づくメモ・リンク ---- */
+window.savePracDayMemo=()=>{
+  const v=($('#pracDayMemo').value||'').trim();
+  if(v){ pracMemo[pracSelDate]=v; } else { delete pracMemo[pracSelDate]; }
+  save(); toast('この日のメモを保存しました');
+};
+window.addPracDayLink=()=>{
+  const title=($('#pracLinkTitle').value||'').trim();
+  const url=normalizeUrl($('#pracLinkUrl').value);
+  if(!url){ toast('URLを入力してください'); return; }
+  if(!Array.isArray(pracLinks[pracSelDate])) pracLinks[pracSelDate]=[];
+  pracLinks[pracSelDate].push({title,url});
+  $('#pracLinkTitle').value=''; $('#pracLinkUrl').value='';
+  save(); renderPracDayLinks(); toast('リンクを追加しました');
+};
+window.removePracDayLink=(i)=>{
+  if(Array.isArray(pracLinks[pracSelDate])){
+    pracLinks[pracSelDate].splice(i,1);
+    if(!pracLinks[pracSelDate].length) delete pracLinks[pracSelDate];
+  }
+  save(); renderPracDayLinks();
+};
+function renderPracDayLinks(){
+  const box=$('#pracDayLinkList'); if(!box)return;
+  const list=pracLinks[pracSelDate]||[];
+  if(!list.length){ box.innerHTML=''; return; }
+  box.innerHTML=list.map((l,i)=>`
+    <div class="card pad" style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700">${esc(l.title||l.url)}</div>
+        <div class="small" style="color:var(--ink-faint);word-break:break-all">${esc(l.url)}</div>
+      </div>
+      <button class="btn danger" style="width:auto;padding:6px 12px" onclick="removePracDayLink(${i})">削除</button>
+    </div>`).join('');
+}
 window.addMenuTpl=(kind)=>{
   const el=$(kind==='am'?'#amNewMenuTpl':'#newMenuTpl'); const v=(el.value||'').trim(); if(!v)return;
   menuListOf(kind).push({text:v,cats:[]});
@@ -1415,6 +1503,11 @@ window.movePractice=(idx,dir)=>{
 function renderPrac(){
   renderPracCatTags();
   renderMenuTplList('normal');
+  // この日のメモ・リンク（入力中は上書きしない）
+  const memoEl=$('#pracDayMemo');
+  if(memoEl && document.activeElement!==memoEl) memoEl.value = pracMemo[pracSelDate]||'';
+  const ae=document.activeElement;
+  if(ae!==$('#pracLinkTitle') && ae!==$('#pracLinkUrl')) renderPracDayLinks();
   // この日の練習一覧
   const arr=practices[pracSelDate]||[];
   if(arr.length){
