@@ -377,15 +377,18 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
   <div class="segbar">
     <button class="seg on" id="attseg-normal" onclick="switchAttendView('normal')">提出・出席</button>
     <button class="seg" id="attseg-am" onclick="switchAttendView('am')">朝練の出席</button>
+    <button class="seg" id="attseg-noteonly" onclick="switchAttendView('noteonly')">ノートのみ</button>
   </div>
   <h2 class="section" id="attendTitle">提出一覧</h2>
-  <div class="monthnav">
+  <div class="monthnav" id="attendMonthNav">
     <button onclick="shiftMonth(-1)" aria-label="前の月">‹</button>
     <span id="monthLabel">—</span>
     <button onclick="shiftMonth(1)" aria-label="次の月">›</button>
   </div>
   <p class="hint" id="attendHint" style="text-align:left">◎=当日提出 / ○=正当な理由で遅れ / △=遅れて提出 / ×=未提出。枠色は出席状況（<b style="color:var(--ok)">緑=出席</b> / <b style="color:var(--warn)">橙=遅刻</b> / <b style="color:var(--err)">赤=出席したのに未提出</b>）。タップで循環、長押しで詳細メニュー。</p>
+  <p class="hint" id="noteOnlyHint" style="text-align:left;display:none">出席の記録はないのに、ノート提出だけがある日の一覧です。出席を付け忘れた日の確認に使えます。</p>
   <div id="attendWrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch"></div>
+  <div id="noteOnlyWrap" style="display:none"></div>
   <div id="attendExport">
   <h2 class="section" style="margin-top:24px">AI分析用にエクスポート</h2>
   <p class="hint" style="text-align:left">全員の記録を書き出します。コピーしてクロードやChatGPTに貼ると、成長過程を分析してもらえます。</p>
@@ -779,7 +782,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026101703';
+const APP_VER='2026101704';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -2153,13 +2156,54 @@ window.switchAttendView=v=>{
   attendView=v;
   $('#attseg-normal').classList.toggle('on',v==='normal');
   $('#attseg-am').classList.toggle('on',v==='am');
-  $('#attendTitle').textContent = v==='am' ? '朝練の出席一覧' : '提出一覧';
-  $('#attendHint').style.display = v==='am' ? 'none' : '';
-  $('#attendExport').style.display = v==='am' ? 'none' : '';
+  $('#attseg-noteonly').classList.toggle('on',v==='noteonly');
+  $('#attendTitle').textContent = v==='am' ? '朝練の出席一覧' : (v==='noteonly' ? 'ノート提出のみの日' : '提出一覧');
+  $('#attendHint').style.display = (v==='normal') ? '' : 'none';
+  $('#noteOnlyHint').style.display = (v==='noteonly') ? '' : 'none';
+  $('#attendMonthNav').style.display = (v==='noteonly') ? 'none' : '';
+  $('#attendExport').style.display = (v==='normal') ? '' : 'none';
+  $('#attendWrap').style.display = (v==='noteonly') ? 'none' : '';
+  $('#noteOnlyWrap').style.display = (v==='noteonly') ? 'block' : 'none';
   renderAttend();
+};
+/* 出席記録がないのにノート提出がある日の一覧 */
+function hasAttnRecord(d){
+  const r=attendance[d];
+  return Array.isArray(r) ? r.length>0 : Object.keys(r||{}).length>0;
+}
+function renderNoteOnlyList(){
+  const box=$('#noteOnlyWrap');
+  // ノート提出がある日を集める
+  const noteDates=new Set();
+  players.forEach(p=>{ if(Array.isArray(p.notes)) p.notes.forEach(n=>{ if(n&&n.d) noteDates.add(n.d); }); });
+  // 出席記録がない日だけに絞る（新しい順）
+  const days=[...noteDates].filter(d=>!hasAttnRecord(d)).sort((a,b)=>a>b?-1:1);
+  if(!days.length){ box.innerHTML='<div class="empty">出席記録がなくノート提出だけ、という日はありません。</div>'; return; }
+  const WD=['日','月','火','水','木','金','土'];
+  box.innerHTML=days.map(d=>{
+    const subs=players.filter(p=>Array.isArray(p.notes)&&p.notes.some(n=>n.d===d));
+    const chips=subs.map(p=>{
+      const st=statusOf(p,d);
+      return `<span class="wt" style="display:inline-flex;align-items:center;gap:4px"><b style="color:${STCOL[st]}">${STMARK[st]}</b>${esc(p.name)}</span>`;
+    }).join('');
+    return `<div class="card pad" style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+        <div style="font-weight:700">${fmt(d)}（${WD[new Date(d).getDay()]}）</div>
+        <button class="btn soft" style="width:auto;padding:6px 12px" onclick="goAttnForDate('${d}')">出席を記録</button>
+      </div>
+      <div class="tg" style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div>
+    </div>`;
+  }).join('');
+}
+/* その日の出席記録画面へ移動（練習ページの出席タブ） */
+window.goAttnForDate=(d)=>{
+  attnSelDate=d;
+  const ap=$('#attnDate'); if(ap) ap.value=d;
+  go('prac'); switchPracView('attn');
 };
 function renderAttend(){
   if(attendView==='am'){ renderAmAttendTable(); return; }
+  if(attendView==='noteonly'){ renderNoteOnlyList(); return; }
   const wrap=$('#attendWrap');
   const lbl=$('#monthLabel');
   if(!players.length){wrap.innerHTML='<div class="empty">選手がいません。</div>';lbl.textContent='—';return;}
