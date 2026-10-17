@@ -1,5 +1,5 @@
 /* Note IQ Service Worker */
-const VERSION = 'noteiq-v43';
+const VERSION = 'noteiq-v44';
 const ASSETS = [
   './',
   './index.html',
