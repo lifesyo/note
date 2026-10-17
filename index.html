@@ -293,6 +293,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
       <button class="seg on" id="vseg-prac" onclick="vSwitch('prac')">練習</button>
       <button class="seg" id="vseg-am" onclick="vSwitch('am')">朝練</button>
       <button class="seg" id="vseg-attn" onclick="vSwitch('attn')">出席</button>
+      <button class="seg" id="vseg-link" onclick="vSwitch('link')">リンク</button>
     </div>
 
     <div class="daynav" id="vDayNav" style="margin-top:14px">
@@ -576,6 +577,26 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
     <button class="btn soft noprint" onclick="printViewerQr()" style="width:100%;margin-top:8px">🖨 QRを印刷 / PDF保存</button>
   </div>
 
+  <h2 class="section">選手へのメモ（コーチから）</h2>
+  <div class="card pad">
+    <p class="hint" style="margin:0 0 10px">ここに書いた内容が、選手用ページの「リンク」タブに表示されます（閲覧のみ・選手は入力できません）。</p>
+    <textarea id="coachMemoInput" rows="4" placeholder="例：今週末は練習試合です。9時集合、忘れ物注意！"></textarea>
+    <button class="btn primary" onclick="saveCoachMemo()" style="margin-top:10px">メモを保存して共有</button>
+  </div>
+
+  <h2 class="section">共有リンク</h2>
+  <div class="card pad">
+    <p class="hint" style="margin:0 0 10px">YouTubeや資料などのリンクを登録すると、選手用ページの「リンク」タブからタップで開けます。</p>
+    <div class="field">
+      <input type="text" id="linkTitle" placeholder="表示名（例：今日の練習動画）" style="margin-bottom:8px">
+      <div class="addrow">
+        <input type="text" id="linkUrl" placeholder="https://..." onkeydown="if(event.key==='Enter')addCoachLink()">
+        <button class="btn soft" onclick="addCoachLink()">追加</button>
+      </div>
+    </div>
+    <div id="coachLinkList" style="margin-top:10px"></div>
+  </div>
+
   <h2 class="section">ノートを一括取り込み</h2>
   <div class="card pad">
     <p class="hint" style="margin:0 0 10px">文字起こししたノートをJSONで貼り付けて、名前で選手に自動振り分けします。</p>
@@ -754,11 +775,13 @@ let noteless={};   // { 'YYYY-MM-DD': true }。ノート提出を求めない日
 let practiceCats=[]; // 作成済みカテゴリ名のリスト
 let menuTemplates=[]; // 登録した練習メニュー [{text:'...', cats:[...]}]（旧形式=文字列も可）
 let amMenuTemplates=[]; // 朝練の登録メニュー
+let coachLinks=[]; // 選手に共有するリンク [{title:'...', url:'...'}]
+let coachMemo=''; // 選手向けのコーチからのメモ（一方通行・閲覧のみ）
 let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026101401';
+const APP_VER='2026101701';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -825,6 +848,8 @@ function startViewer(){
       practices=(d.practices&&typeof d.practices==='object')?d.practices:{};
       amPractices=(d.amPractices&&typeof d.amPractices==='object')?d.amPractices:{};
       amAttendance=(d.amAttendance&&typeof d.amAttendance==='object')?d.amAttendance:{};
+      coachLinks=Array.isArray(d.coachLinks)?d.coachLinks.filter(l=>l&&l.url).map(l=>({title:l.title||'',url:l.url})):[];
+      coachMemo=(typeof d.coachMemo==='string')?d.coachMemo:'';
       $('#vTeamTag').textContent=teamName;
     }
     renderViewer();
@@ -832,7 +857,8 @@ function startViewer(){
 }
 window.vSwitch=v=>{
   vView=v;
-  ['prac','am','attn'].forEach(x=>$('#vseg-'+x).classList.toggle('on',x===v));
+  ['prac','am','attn','link'].forEach(x=>$('#vseg-'+x).classList.toggle('on',x===v));
+  const dn=$('#vDayNav'); if(dn) dn.style.display = v==='link' ? 'none' : '';
   renderViewer();
 };
 /* 日付を前後に移動（練習/朝練は記録のある日だけをスキップ移動、出席は1日ずつ） */
@@ -864,6 +890,29 @@ function renderViewer(){
   const lbl=$('#vDayLabel'); const pick=$('#vDayPick');
   if(lbl){ lbl.textContent=fmt(vSelDate)+'（'+WD[new Date(vSelDate).getDay()]+'）'+(vSelDate===today?' ・今日':''); }
   if(pick){ pick.value=vSelDate; }
+  if(vView==='link'){
+    let html='';
+    if(coachMemo && coachMemo.trim()){
+      html += `<div class="card pad" style="margin-bottom:12px;border-left:4px solid var(--accent-ink)">
+        <div style="font-size:13px;font-weight:700;color:var(--accent-ink);margin-bottom:6px">コーチからのメモ</div>
+        <div style="white-space:pre-wrap;line-height:1.6">${esc(coachMemo)}</div>
+      </div>`;
+    }
+    if(coachLinks.length){
+      html += '<h2 class="section" style="margin-top:4px">リンク</h2>';
+      html += coachLinks.map(l=>`
+        <a class="card pad" href="${esc(l.url)}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;text-decoration:none;color:inherit">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700">${esc(l.title||l.url)}</div>
+            <div class="small" style="color:var(--ink-faint);word-break:break-all">${esc(l.url)}</div>
+          </div>
+          <span style="color:var(--accent-ink);font-size:18px;white-space:nowrap">↗</span>
+        </a>`).join('');
+    }
+    if(!html){ html='<div class="empty">共有されているメモ・リンクはありません。</div>'; }
+    box.innerHTML=html;
+    return;
+  }
   if(vView==='prac'||vView==='am'){
     const src = vView==='am' ? amPractices : practices;
     const list = src[vSelDate]||[];
@@ -906,6 +955,8 @@ function renderUser(){
     <div><div style="font-weight:700">${u.displayName||''}</div><div class="small">${u.email||''}</div></div></div>`;
   $('#teamName').value=teamName;
   const vEl=$('#appVer'); if(vEl) vEl.textContent='v'+APP_VER;
+  const memoEl=$('#coachMemoInput'); if(memoEl) memoEl.value=coachMemo||'';
+  renderCoachLinks();
   renderViewerQr();
 }
 /* 選手用ページのQRとURLを描画 */
@@ -925,6 +976,41 @@ window.copyViewerUrl=()=>{
   const url=viewerPageUrl();
   navigator.clipboard?.writeText(url).then(()=>toast('リンクをコピーしました')).catch(()=>toast('コピーできませんでした'));
 };
+/* ---- コーチのメモ・共有リンク ---- */
+window.saveCoachMemo=()=>{
+  coachMemo=($('#coachMemoInput').value||'').trim();
+  save(); toast('メモを共有しました');
+};
+function normalizeUrl(u){
+  u=(u||'').trim();
+  if(!u)return '';
+  if(!/^https?:\/\//i.test(u)) u='https://'+u;
+  return u;
+};
+window.addCoachLink=()=>{
+  const title=($('#linkTitle').value||'').trim();
+  const url=normalizeUrl($('#linkUrl').value);
+  if(!url){ toast('URLを入力してください'); return; }
+  coachLinks.push({title,url});
+  $('#linkTitle').value=''; $('#linkUrl').value='';
+  save(); renderCoachLinks(); toast('リンクを追加しました');
+};
+window.removeCoachLink=(i)=>{
+  coachLinks.splice(i,1);
+  save(); renderCoachLinks();
+};
+function renderCoachLinks(){
+  const box=$('#coachLinkList'); if(!box)return;
+  if(!coachLinks.length){ box.innerHTML='<div class="empty" style="padding:14px">まだリンクがありません。</div>'; return; }
+  box.innerHTML=coachLinks.map((l,i)=>`
+    <div class="card pad" style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700">${esc(l.title||l.url)}</div>
+        <div class="small" style="color:var(--ink-faint);word-break:break-all">${esc(l.url)}</div>
+      </div>
+      <button class="btn danger" style="width:auto;padding:6px 12px" onclick="removeCoachLink(${i})">削除</button>
+    </div>`).join('');
+}
 window.printViewerQr=()=>{
   const url=viewerPageUrl();
   const w=window.open('','_blank');
@@ -996,6 +1082,8 @@ function subscribe(uid){
       if(Array.isArray(d.practiceCats))practiceCats=d.practiceCats;
       if(Array.isArray(d.menuTemplates))menuTemplates=d.menuTemplates.map(t=> typeof t==='string' ? {text:t,cats:[]} : {text:t.text||'',cats:Array.isArray(t.cats)?t.cats:[]});
       if(Array.isArray(d.amMenuTemplates))amMenuTemplates=d.amMenuTemplates.map(t=> typeof t==='string' ? {text:t,cats:[]} : {text:t.text||'',cats:Array.isArray(t.cats)?t.cats:[]});
+      if(Array.isArray(d.coachLinks))coachLinks=d.coachLinks.filter(l=>l&&l.url).map(l=>({title:l.title||'',url:l.url}));
+      if(typeof d.coachMemo==='string')coachMemo=d.coachMemo;
       if(d.seq)seq=d.seq;
       $('#teamTag').textContent=teamName;
       if(dedupeEmptyNotes())save(); // 同日の空記録（受付チェックとノートの二重）を掃除
@@ -1012,7 +1100,7 @@ async function save(){
   if(!currentUser)return;
   setSync('syncing');
   try{
-    await setDoc(doc(db,'noteiq',currentUser.uid),{players,teamName,attendance,practices,amPractices,amAttendance,noteless,practiceCats,menuTemplates,amMenuTemplates,seq,updatedAt:new Date().toISOString()});
+    await setDoc(doc(db,'noteiq',currentUser.uid),{players,teamName,attendance,practices,amPractices,amAttendance,noteless,practiceCats,menuTemplates,amMenuTemplates,coachLinks,coachMemo,seq,updatedAt:new Date().toISOString()});
     setSync('synced');
   }catch(e){console.error(e);setSync('error');toast('⚠️ 保存に失敗しました');}
 }
