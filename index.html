@@ -792,7 +792,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026102301';
+const APP_VER='2026102701';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1692,9 +1692,14 @@ window.switchPracView=v=>{
 };
 function renderAmAll(){
   const dp=$('#amDate'); if(dp&&!dp.value)dp.value=amSelDate;
+  if(!amHistDay){ amHistDay=amSelDate; amHistMonth=amSelDate.slice(0,7); }
   renderAmAttn(); renderAmCatTags(); renderAmHist(); renderMenuTplList('am');
 }
-window.onAmDateChange=()=>{ amSelDate=$('#amDate').value||todayStr(); renderAmAttn(); };
+window.onAmDateChange=()=>{
+  amSelDate=$('#amDate').value||todayStr();
+  amHistDay=amSelDate; amHistMonth=amSelDate.slice(0,7);
+  renderAmAttn(); renderAmHist();
+};
 function amAttnStatus(id,d){
   const rec=amAttendance[d];
   if(!rec)return 'absent';
@@ -1774,8 +1779,8 @@ function renderAmHist(){
   const days=[...daySet].sort((a,b)=>a>b?-1:1);
   const menuDays=Object.keys(amPractices).filter(d=>d.slice(0,7)===amHistMonth && amPractices[d] && amPractices[d].length).sort((a,b)=>a>b?-1:1);
   ratio.innerHTML=renderPracRatio(menuDays, amPractices);
-  // 表示日の決定
-  if(!amHistDay || !days.includes(amHistDay)) amHistDay = days[0] || null;
+  // 表示日＝上の「朝練日」と常に一致させる（登録と閲覧の日付ズレ防止）
+  amHistDay = amSelDate;
   const dl=$('#amDayLabel'); const dp=$('#amDayPick');
   if(amHistDay){
     const wd0=['日','月','火','水','木','金','土'][new Date(amHistDay).getDay()];
@@ -1829,16 +1834,32 @@ function amAllDays(){
   Object.keys(amAttendance).forEach(d=>{ const r=amAttendance[d]; const has=Array.isArray(r)?r.length:Object.keys(r||{}).length; if(has)s.add(d); });
   return [...s].sort();
 }
+/* 上の「朝練日」も合わせて動かし、登録先と表示日を常に一致させる */
+function amSetSelDate(d){
+  amSelDate=d; amHistDay=d; amHistMonth=d.slice(0,7);
+  const dp=$('#amDate'); if(dp)dp.value=d;
+  renderAmAttn(); renderAmHist();
+}
 window.shiftAmDay=dir=>{
   const allDays=amAllDays();
-  if(!allDays.length)return;
-  let i=allDays.indexOf(amHistDay);
-  if(i<0){ i = dir>0 ? allDays.length-1 : 0; amHistDay=allDays[i]; }
-  else { const ni=i+dir; if(ni>=0&&ni<allDays.length) amHistDay=allDays[ni]; }
-  amHistMonth=amHistDay.slice(0,7);
-  renderAmHist();
+  if(!allDays.length){
+    // 記録がまだ無い場合は1日ずつ移動
+    const dt=new Date(amSelDate); dt.setDate(dt.getDate()+dir);
+    amSetSelDate(`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`);
+    return;
+  }
+  let i=allDays.indexOf(amSelDate);
+  if(i<0){
+    // 選択日に記録がなければ、方向に応じて近い記録日へ
+    i = dir>0 ? allDays.findIndex(d=>d>amSelDate) : (()=>{for(let k=allDays.length-1;k>=0;k--)if(allDays[k]<amSelDate)return k;return -1;})();
+    if(i<0){ i = dir>0 ? allDays.length-1 : 0; }
+    amSetSelDate(allDays[i]);
+  }else{
+    const ni=i+dir;
+    if(ni>=0&&ni<allDays.length) amSetSelDate(allDays[ni]);
+  }
 };
-window.pickAmDay=v=>{ if(v){ amHistDay=v; amHistMonth=v.slice(0,7); renderAmHist(); } };
+window.pickAmDay=v=>{ if(v){ amSetSelDate(v); } };
 window.openAmEdit=(d,idx)=>{ openPracEditSrc(amPractices,'am',d,idx); };
 
 /* ---- 練習カード：タップ＝編集 / 長押し＝同じ日の中でD&D並び替え ---- */
