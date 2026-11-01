@@ -470,6 +470,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
     <button class="btn primary" onclick="addPractice()">この練習を記録する</button>
     <h2 class="section">この日の練習</h2>
     <div id="pracList"></div>
+    <button class="btn soft" onclick="printMonthMenus('rec')" style="width:100%;margin-top:12px">🖨 この月の練習メニューをPDF出力（通常＋朝練）</button>
 
     <h2 class="section">この日のメモ・リンク</h2>
     <p class="hint" style="text-align:left;margin-top:0">この練習日に紐づくメモとリンク。選手用ページの「練習」タブ（この日）に表示されます（閲覧のみ）。</p>
@@ -792,7 +793,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026102701';
+const APP_VER='2026110201';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1050,8 +1051,10 @@ window.printViewerQr=()=>{
 };
 /* その月の練習メニュー一覧（通常＋朝練）をPDF用に印刷ウィンドウで出力 */
 window.printMonthMenus=(from)=>{
-  // 対象月：通常タブから押したら通常の表示月、朝練タブからなら朝練の表示月。無ければ今月
-  const ym = (from==='am' ? amHistMonth : pracHistMonth) || todayStr().slice(0,7);
+  // 対象月：練習記録タブからは選択中の練習日の月、通常履歴タブは表示月、朝練タブは朝練の表示月。無ければ今月
+  const ym = (from==='rec' ? (pracSelDate||'').slice(0,7)
+            : from==='am' ? amHistMonth
+            : pracHistMonth) || todayStr().slice(0,7);
   const WD=['日','月','火','水','木','金','土'];
   // その月の日付を集める（通常・朝練いずれかに記録がある日）
   const daySet=new Set();
