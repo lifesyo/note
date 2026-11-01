@@ -813,13 +813,15 @@ let noteless={};   // { 'YYYY-MM-DD': true }。ノート提出を求めない日
 let practiceCats=[]; // 作成済みカテゴリ名のリスト
 let menuTemplates=[]; // 登録した練習メニュー [{text:'...', cats:[...]}]（旧形式=文字列も可）
 let amMenuTemplates=[]; // 朝練の登録メニュー
+let printMonthDocHtml=''; // 月の練習メニューPDF用の独立HTML
+let printMonthUrl=null; // 上記のObject URL（Safariで開く用）
 let pracMemo={}; // { 'YYYY-MM-DD': 'メモ' } その日の練習に紐づくメモ（閲覧のみ）
 let pracLinks={}; // { 'YYYY-MM-DD': [{title,url}] } その日の練習に紐づくリンク（閲覧のみ）
 let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026110202';
+const APP_VER='2026110203';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1107,23 +1109,48 @@ window.printMonthMenus=(from)=>{
     </div>`;
   });
   const monthLbl=`${ym.split('-')[0]}年${+ym.split('-')[1]}月`;
-  // ポップアップではなくアプリ内オーバーレイに表示（iOS/PWAでも戻る・PDF保存が確実に出る）
+  // アプリ内オーバーレイに表示（プレビュー）
   $('#printMonthBody').innerHTML=`
     <h2 style="margin:0 0 2px">${esc(teamName)}</h2>
     <div style="color:var(--ink-soft);font-size:14px;margin-bottom:16px">${monthLbl} 練習メニュー一覧</div>
     ${rows}`;
+  // 「印刷/PDF保存」用：Safariで開く独立HTML（iOS PWAのwindow.print無反応を回避）
+  printMonthDocHtml=`<!doctype html><html lang="ja"><head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>${esc(teamName)} ${monthLbl} 練習メニュー</title>
+    <style>@page{margin:14mm}
+      body{font-family:'Hiragino Sans','Yu Gothic',sans-serif;color:#222;max-width:720px;margin:0 auto;padding:16px;-webkit-text-size-adjust:100%}
+      .pbtn{position:sticky;top:0;background:#fff;padding:10px 0;border-bottom:1px solid #eee;margin-bottom:14px}
+      .pbtn button{font:600 15px/1 inherit;background:#0b8a80;color:#fff;border:none;border-radius:10px;padding:12px 18px;width:100%}
+      @media print{.pbtn{display:none}body{padding:0}}
+    </style></head><body>
+    <div class="pbtn"><button onclick="window.print()">🖨 印刷 / PDFとして保存</button></div>
+    <h2 style="margin:0 0 2px">${esc(teamName)}</h2>
+    <div style="color:#666;font-size:14px;margin-bottom:16px">${monthLbl} 練習メニュー一覧</div>
+    ${rows}</body></html>`;
   $('#printMonthOverlay').classList.add('open');
   document.body.classList.add('modal-lock');
 };
 window.closePrintMonth=()=>{
   $('#printMonthOverlay').classList.remove('open');
   document.body.classList.remove('modal-lock');
+  if(printMonthUrl){ try{URL.revokeObjectURL(printMonthUrl);}catch(e){} printMonthUrl=null; }
 };
+/* 「印刷/PDF保存」= Safariで独立HTMLを開く。そこで共有→PDFとして保存できる */
 window.doPrintMonth=()=>{
-  document.body.classList.add('pm-print-active');
-  const cleanup=()=>{ document.body.classList.remove('pm-print-active'); window.removeEventListener('afterprint',cleanup); };
-  window.addEventListener('afterprint',cleanup);
-  setTimeout(()=>{ window.print(); setTimeout(cleanup,800); },60);
+  if(!printMonthDocHtml){ toast('先に内容を表示してください'); return; }
+  try{
+    if(printMonthUrl){ URL.revokeObjectURL(printMonthUrl); }
+    const blob=new Blob([printMonthDocHtml],{type:'text/html'});
+    printMonthUrl=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=printMonthUrl; a.target='_blank'; a.rel='noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+  }catch(e){
+    // フォールバック：同一タブで印刷
+    document.body.classList.add('pm-print-active');
+    setTimeout(()=>{ window.print(); setTimeout(()=>document.body.classList.remove('pm-print-active'),800); },60);
+  }
 };
 
 /* ---------- firestore ---------- */
