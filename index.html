@@ -230,6 +230,23 @@ nav button.on svg{stroke-width:2.2}
   #v-cards{display:block!important;padding:0}
   #v-cards .bc{page-break-inside:avoid;display:inline-block;width:48%;margin:1%}
 }
+/* 月の練習メニュー 印刷/PDFオーバーレイ */
+#printMonthOverlay{position:fixed;inset:0;z-index:250;background:var(--paper);overflow-y:auto;-webkit-overflow-scrolling:touch;display:none}
+#printMonthOverlay.open{display:block}
+#printMonthOverlay .pm-bar{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;background:var(--paper);border-bottom:1px solid var(--edge);box-shadow:0 2px 8px rgba(0,0,0,.05)}
+body.pm-print-active.modal-lock{overflow:hidden}
+@media print{
+  body.pm-print-active header,
+  body.pm-print-active nav,
+  body.pm-print-active .toast,
+  body.pm-print-active .modal{display:none!important}
+  /* coachWrap直下の各ビューは隠すが、オーバーレイだけは印刷する */
+  body.pm-print-active #coachWrap > .view{display:none!important}
+  body.pm-print-active #v-cards{display:none!important}
+  body.pm-print-active #printMonthOverlay{display:block!important;position:static;overflow:visible;background:#fff}
+  body.pm-print-active #printMonthOverlay .pm-bar{display:none!important}
+  body.pm-print-active #printMonthOverlay #printMonthBody{padding:0;max-width:none}
+}
 .modal{position:fixed;inset:0;z-index:200;background:rgba(26,28,34,.45);display:none;align-items:flex-end;justify-content:center}
 .modal.open{display:flex}
 .modal-inner{background:var(--paper);width:100%;max-width:640px;max-height:calc(100vh - env(safe-area-inset-top) - 24px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;border-radius:18px 18px 0 0;padding:0 16px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,.15)}
@@ -413,6 +430,15 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
     <textarea id="exportText" rows="16" readonly style="font-size:13px;line-height:1.5"></textarea>
     <button class="btn ghost" onclick="closeExport()" style="margin-top:10px">閉じる</button>
   </div>
+</div>
+
+<!-- 月の練習メニュー 印刷/PDF オーバーレイ -->
+<div id="printMonthOverlay">
+  <div class="pm-bar noprint">
+    <button class="btn ghost" onclick="closePrintMonth()" style="width:auto;padding:8px 14px">‹ 戻る</button>
+    <button class="btn primary" onclick="doPrintMonth()" style="width:auto;padding:8px 16px">🖨 印刷 / PDF保存</button>
+  </div>
+  <div id="printMonthBody" style="padding:16px;max-width:720px;margin:0 auto"></div>
 </div>
 
 <!-- PLAYERS -->
@@ -793,7 +819,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026110201';
+const APP_VER='2026110202';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1081,17 +1107,23 @@ window.printMonthMenus=(from)=>{
     </div>`;
   });
   const monthLbl=`${ym.split('-')[0]}年${+ym.split('-')[1]}月`;
-  const w=window.open('','_blank');
-  if(!w){ toast('ポップアップを許可してください'); return; }
-  w.document.write(`<html><head><title>${esc(teamName)} ${monthLbl} 練習メニュー</title><meta charset="utf-8">
-    <style>@page{margin:14mm} body{font-family:'Hiragino Sans','Yu Gothic',sans-serif;color:#222;max-width:720px;margin:0 auto;padding:10px}</style>
-    </head><body>
+  // ポップアップではなくアプリ内オーバーレイに表示（iOS/PWAでも戻る・PDF保存が確実に出る）
+  $('#printMonthBody').innerHTML=`
     <h2 style="margin:0 0 2px">${esc(teamName)}</h2>
-    <div style="color:#666;font-size:14px;margin-bottom:16px">${monthLbl} 練習メニュー一覧</div>
-    ${rows}
-    <script>setTimeout(()=>window.print(),400);<\/script>
-    </body></html>`);
-  w.document.close();
+    <div style="color:var(--ink-soft);font-size:14px;margin-bottom:16px">${monthLbl} 練習メニュー一覧</div>
+    ${rows}`;
+  $('#printMonthOverlay').classList.add('open');
+  document.body.classList.add('modal-lock');
+};
+window.closePrintMonth=()=>{
+  $('#printMonthOverlay').classList.remove('open');
+  document.body.classList.remove('modal-lock');
+};
+window.doPrintMonth=()=>{
+  document.body.classList.add('pm-print-active');
+  const cleanup=()=>{ document.body.classList.remove('pm-print-active'); window.removeEventListener('afterprint',cleanup); };
+  window.addEventListener('afterprint',cleanup);
+  setTimeout(()=>{ window.print(); setTimeout(cleanup,800); },60);
 };
 
 /* ---------- firestore ---------- */
