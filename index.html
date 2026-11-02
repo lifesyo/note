@@ -14,7 +14,6 @@
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
 :root{
@@ -818,13 +817,14 @@ let amMenuTemplates=[]; // 朝練の登録メニュー
 let printMonthDocHtml=''; // 月の練習メニューPDF用の独立HTML（フォールバック用）
 let printMonthUrl=null; // 上記のObject URL
 let printMonthLbl=''; // PDFファイル名用の月ラベル
+let printMonthModel=null; // Canvas描画用の構造化データ
 let pracMemo={}; // { 'YYYY-MM-DD': 'メモ' } その日の練習に紐づくメモ（閲覧のみ）
 let pracLinks={}; // { 'YYYY-MM-DD': [{title,url}] } その日の練習に紐づくリンク（閲覧のみ）
 let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026110205';
+const APP_VER='2026110206';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1113,6 +1113,15 @@ window.printMonthMenus=(from)=>{
   });
   const monthLbl=`${ym.split('-')[0]}年${+ym.split('-')[1]}月`;
   printMonthLbl=monthLbl;
+  // Canvas描画用の構造化モデル（html2canvasに依存しないPDF生成に使用）
+  printMonthModel={ team:teamName, monthLbl, days: days.map(d=>{
+    const wd=WD[new Date(d).getDay()];
+    return {
+      label:`${(+d.split('-')[1])}月${(+d.split('-')[2])}日（${wd}）`,
+      normal:(practices[d]||[]).map(pr=>({text:pr.text||'',cats:(pr.cats||[]).slice()})),
+      am:(amPractices[d]||[]).map(pr=>({text:pr.text||'',cats:(pr.cats||[]).slice()}))
+    };
+  }) };
   // アプリ内オーバーレイに表示（プレビュー）
   $('#printMonthBody').innerHTML=`
     <h2 style="margin:0 0 2px">${esc(teamName)}</h2>
@@ -1140,63 +1149,82 @@ window.closePrintMonth=()=>{
   document.body.classList.remove('modal-lock');
   if(printMonthUrl){ try{URL.revokeObjectURL(printMonthUrl);}catch(e){} printMonthUrl=null; }
 };
-/* 「印刷/PDF保存」= 端末内でPDFを生成して保存（iOS PWAでも確実）。
-   日本語を含むため html2canvas で描画→画像としてjsPDFに貼り、A4複数ページに分割 */
-window.doPrintMonth=async()=>{
-  const body=$('#printMonthBody');
-  if(!body || !body.innerHTML.trim()){ toast('先に内容を表示してください'); return; }
+/* 「印刷/PDF保存」= Canvas 2Dに直接描画してPDF化（html2canvasに依存せず、iOS PWAでも確実）。
+   日本語は Canvas の fillText がOSフォントで描画するので埋め込み不要。A4を複数ページに分割。 */
+window.doPrintMonth=()=>{
   const JsPDF = window.jspdf && window.jspdf.jsPDF;
-  if(typeof html2canvas!=='function' || !JsPDF){
-    // ライブラリ未読込時は従来の印刷にフォールバック
-    document.body.classList.add('pm-print-active');
-    setTimeout(()=>{ try{window.print();}catch(e){} setTimeout(()=>document.body.classList.remove('pm-print-active'),800); },60);
-    return;
-  }
+  if(!printMonthModel || !printMonthModel.days.length){ toast('先に内容を表示してください'); return; }
+  if(!JsPDF){ toast('PDF機能を読み込めませんでした。通信環境をご確認ください'); return; }
   const btn=$('#printMonthBtn');
   if(btn){ btn.disabled=true; btn.textContent='PDFを作成中…'; }
-  // 白背景の描画用ノードを画面内（最前面）に一瞬置いて確実にレイアウト・描画させる
-  const stage=document.createElement('div');
-  stage.style.cssText='position:fixed;left:0;top:0;z-index:99999;width:720px;background:#ffffff;color:#222;padding:20px;box-sizing:border-box;font-family:\'Hiragino Sans\',\'Yu Gothic\',sans-serif';
-  stage.innerHTML=body.innerHTML;
-  // プレビューの subtitle は var(--ink-soft) なので固定色へ
-  stage.querySelectorAll('[style*="--ink-soft"]').forEach(el=>el.style.color='#666');
-  document.body.appendChild(stage);
   try{
-    // レイアウト確定を待つ（2フレーム）
-    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-    const w=stage.offsetWidth, h=stage.scrollHeight;
-    const canvas=await html2canvas(stage,{scale:2,backgroundColor:'#ffffff',useCORS:true,
-      width:w,height:h,windowWidth:w,windowHeight:h,scrollX:0,scrollY:0,x:0,y:0});
-    if(!canvas.width || !canvas.height){ throw new Error('empty canvas'); }
+    const m=printMonthModel;
+    // A4: 210x297mm。96dpi相当→2倍で描画。1mm≈3.78px, ×2 で 7.56px/mm
+    const SC=2, PXMM=3.78*SC;
+    const PW=Math.round(210*PXMM), PH=Math.round(297*PXMM);
+    const MG=Math.round(12*PXMM);
+    const CW=PW-MG*2;
+    const FONT="'Hiragino Sans','Hiragino Kaku Gothic ProN','Yu Gothic','Noto Sans JP',sans-serif";
+    const pages=[]; let cv=null, ctx=null, y=0;
+    const newPage=()=>{
+      cv=document.createElement('canvas'); cv.width=PW; cv.height=PH;
+      ctx=cv.getContext('2d'); ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,PW,PH);
+      ctx.textBaseline='top'; y=MG; pages.push(cv);
+    };
+    const need=(h)=>{ if(y+h>PH-MG) newPage(); };
+    // 文字を幅で折り返して描画（日本語は1文字単位で折返し）
+    const drawWrapped=(text,x,maxW,size,color,lh)=>{
+      ctx.font=`${size}px ${FONT}`; ctx.fillStyle=color;
+      const lines=[]; (text||'').split('\n').forEach(para=>{
+        let line='';
+        for(const ch of para){
+          if(ctx.measureText(line+ch).width>maxW && line){ lines.push(line); line=ch; }
+          else line+=ch;
+        }
+        lines.push(line);
+      });
+      lines.forEach(ln=>{ need(lh); ctx.font=`${size}px ${FONT}`; ctx.fillStyle=color; ctx.fillText(ln,x,y); y+=lh; });
+    };
+    newPage();
+    // ヘッダー
+    drawWrapped(m.team, MG, CW, 20*SC, '#111', 26*SC);
+    drawWrapped(`${m.monthLbl} 練習メニュー一覧`, MG, CW, 12*SC, '#666', 18*SC);
+    y+=8*SC;
+    m.days.forEach(day=>{
+      // 日付の見出し帯
+      need(22*SC);
+      ctx.fillStyle='#d3f2ee'; ctx.fillRect(MG, y, CW, 20*SC);
+      ctx.font=`bold ${13*SC}px ${FONT}`; ctx.fillStyle='#0b8a80';
+      ctx.fillText(day.label, MG+6*SC, y+4*SC);
+      y+=20*SC+6*SC;
+      const section=(title,list)=>{
+        if(!list.length)return;
+        need(16*SC);
+        ctx.font=`bold ${11*SC}px ${FONT}`; ctx.fillStyle='#0b8a80';
+        ctx.fillText(title, MG, y); y+=15*SC;
+        list.forEach(pr=>{
+          drawWrapped(pr.text, MG+4*SC, CW-8*SC, 12*SC, '#222', 17*SC);
+          if(pr.cats&&pr.cats.length){
+            drawWrapped('［'+pr.cats.join('・')+'］', MG+4*SC, CW-8*SC, 10*SC, '#0b8a80', 15*SC);
+          }
+          y+=6*SC;
+        });
+      };
+      section('練習', day.normal);
+      section('朝練', day.am);
+      y+=8*SC;
+    });
     const pdf=new JsPDF('p','mm','a4');
-    const pw=pdf.internal.pageSize.getWidth();   // 210
-    const ph=pdf.internal.pageSize.getHeight();  // 297
-    const margin=10;
-    const imgW=pw-margin*2;
-    const imgH=canvas.height*imgW/canvas.width;  // mm換算の全体高さ
-    const pageContentH=ph-margin*2;
-    let remaining=imgH, posY=margin, srcY=0;
-    const pxPerMm=canvas.width/imgW;
-    while(remaining>0){
-      const sliceH=Math.min(pageContentH, remaining);
-      const sliceCanvas=document.createElement('canvas');
-      sliceCanvas.width=canvas.width;
-      sliceCanvas.height=Math.round(sliceH*pxPerMm);
-      const ctx=sliceCanvas.getContext('2d');
-      ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,sliceCanvas.width,sliceCanvas.height);
-      ctx.drawImage(canvas,0,srcY,canvas.width,sliceCanvas.height,0,0,canvas.width,sliceCanvas.height);
-      const img=sliceCanvas.toDataURL('image/jpeg',0.92);
-      pdf.addImage(img,'JPEG',margin,margin,imgW,sliceH);
-      remaining-=sliceH; srcY+=sliceCanvas.height;
-      if(remaining>0.5) pdf.addPage();
-    }
-    const fname=(teamName?teamName.replace(/\s+/g,'_'):'練習メニュー')+'_'+(printMonthLbl||'')+'.pdf';
+    pages.forEach((c,i)=>{
+      if(i>0)pdf.addPage();
+      pdf.addImage(c.toDataURL('image/jpeg',0.92),'JPEG',0,0,210,297);
+    });
+    const fname=(m.team?m.team.replace(/\s+/g,'_'):'練習メニュー')+'_'+(printMonthLbl||'')+'.pdf';
     pdf.save(fname);
     toast('PDFを作成しました');
   }catch(e){
     console.error(e); toast('PDFの作成に失敗しました');
   }finally{
-    stage.remove();
     if(btn){ btn.disabled=false; btn.textContent='🖨 印刷 / PDF保存'; }
   }
 };
