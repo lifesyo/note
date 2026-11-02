@@ -14,6 +14,8 @@
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
 :root{
   --ink:#0f2b33;--ink-soft:#4a6b74;--ink-faint:#8aa3aa;
@@ -436,7 +438,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
 <div id="printMonthOverlay">
   <div class="pm-bar noprint">
     <button class="btn ghost" onclick="closePrintMonth()" style="width:auto;padding:8px 14px">‹ 戻る</button>
-    <button class="btn primary" onclick="doPrintMonth()" style="width:auto;padding:8px 16px">🖨 印刷 / PDF保存</button>
+    <button class="btn primary" id="printMonthBtn" onclick="doPrintMonth()" style="width:auto;padding:8px 16px">🖨 印刷 / PDF保存</button>
   </div>
   <div id="printMonthBody" style="padding:16px;max-width:720px;margin:0 auto"></div>
 </div>
@@ -813,15 +815,16 @@ let noteless={};   // { 'YYYY-MM-DD': true }。ノート提出を求めない日
 let practiceCats=[]; // 作成済みカテゴリ名のリスト
 let menuTemplates=[]; // 登録した練習メニュー [{text:'...', cats:[...]}]（旧形式=文字列も可）
 let amMenuTemplates=[]; // 朝練の登録メニュー
-let printMonthDocHtml=''; // 月の練習メニューPDF用の独立HTML
-let printMonthUrl=null; // 上記のObject URL（Safariで開く用）
+let printMonthDocHtml=''; // 月の練習メニューPDF用の独立HTML（フォールバック用）
+let printMonthUrl=null; // 上記のObject URL
+let printMonthLbl=''; // PDFファイル名用の月ラベル
 let pracMemo={}; // { 'YYYY-MM-DD': 'メモ' } その日の練習に紐づくメモ（閲覧のみ）
 let pracLinks={}; // { 'YYYY-MM-DD': [{title,url}] } その日の練習に紐づくリンク（閲覧のみ）
 let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026110203';
+const APP_VER='2026110204';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1109,6 +1112,7 @@ window.printMonthMenus=(from)=>{
     </div>`;
   });
   const monthLbl=`${ym.split('-')[0]}年${+ym.split('-')[1]}月`;
+  printMonthLbl=monthLbl;
   // アプリ内オーバーレイに表示（プレビュー）
   $('#printMonthBody').innerHTML=`
     <h2 style="margin:0 0 2px">${esc(teamName)}</h2>
@@ -1136,20 +1140,59 @@ window.closePrintMonth=()=>{
   document.body.classList.remove('modal-lock');
   if(printMonthUrl){ try{URL.revokeObjectURL(printMonthUrl);}catch(e){} printMonthUrl=null; }
 };
-/* 「印刷/PDF保存」= Safariで独立HTMLを開く。そこで共有→PDFとして保存できる */
-window.doPrintMonth=()=>{
-  if(!printMonthDocHtml){ toast('先に内容を表示してください'); return; }
-  try{
-    if(printMonthUrl){ URL.revokeObjectURL(printMonthUrl); }
-    const blob=new Blob([printMonthDocHtml],{type:'text/html'});
-    printMonthUrl=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=printMonthUrl; a.target='_blank'; a.rel='noopener';
-    document.body.appendChild(a); a.click(); a.remove();
-  }catch(e){
-    // フォールバック：同一タブで印刷
+/* 「印刷/PDF保存」= 端末内でPDFを生成して保存（iOS PWAでも確実）。
+   日本語を含むため html2canvas で描画→画像としてjsPDFに貼り、A4複数ページに分割 */
+window.doPrintMonth=async()=>{
+  const body=$('#printMonthBody');
+  if(!body || !body.innerHTML.trim()){ toast('先に内容を表示してください'); return; }
+  const JsPDF = window.jspdf && window.jspdf.jsPDF;
+  if(typeof html2canvas!=='function' || !JsPDF){
+    // ライブラリ未読込時は従来の印刷にフォールバック
     document.body.classList.add('pm-print-active');
-    setTimeout(()=>{ window.print(); setTimeout(()=>document.body.classList.remove('pm-print-active'),800); },60);
+    setTimeout(()=>{ try{window.print();}catch(e){} setTimeout(()=>document.body.classList.remove('pm-print-active'),800); },60);
+    return;
+  }
+  const btn=$('#printMonthBtn');
+  if(btn){ btn.disabled=true; btn.textContent='PDFを作成中…'; }
+  // 画面外に白背景の描画用ノードを作る（ダークモードの影響を受けないように）
+  const stage=document.createElement('div');
+  stage.style.cssText='position:fixed;left:-99999px;top:0;width:720px;background:#fff;color:#222;padding:20px;font-family:\'Hiragino Sans\',\'Yu Gothic\',sans-serif';
+  stage.innerHTML=body.innerHTML;
+  // プレビューの subtitle は var(--ink-soft) なので固定色へ
+  stage.querySelectorAll('[style*="--ink-soft"]').forEach(el=>el.style.color='#666');
+  document.body.appendChild(stage);
+  try{
+    const canvas=await html2canvas(stage,{scale:2,backgroundColor:'#ffffff',useCORS:true});
+    const pdf=new JsPDF('p','mm','a4');
+    const pw=pdf.internal.pageSize.getWidth();   // 210
+    const ph=pdf.internal.pageSize.getHeight();  // 297
+    const margin=10;
+    const imgW=pw-margin*2;
+    const imgH=canvas.height*imgW/canvas.width;  // mm換算の全体高さ
+    const pageContentH=ph-margin*2;
+    let remaining=imgH, posY=margin, srcY=0;
+    const pxPerMm=canvas.width/imgW;
+    while(remaining>0){
+      const sliceH=Math.min(pageContentH, remaining);
+      const sliceCanvas=document.createElement('canvas');
+      sliceCanvas.width=canvas.width;
+      sliceCanvas.height=Math.round(sliceH*pxPerMm);
+      const ctx=sliceCanvas.getContext('2d');
+      ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,sliceCanvas.width,sliceCanvas.height);
+      ctx.drawImage(canvas,0,srcY,canvas.width,sliceCanvas.height,0,0,canvas.width,sliceCanvas.height);
+      const img=sliceCanvas.toDataURL('image/jpeg',0.92);
+      pdf.addImage(img,'JPEG',margin,margin,imgW,sliceH);
+      remaining-=sliceH; srcY+=sliceCanvas.height;
+      if(remaining>0.5) pdf.addPage();
+    }
+    const fname=(teamName?teamName.replace(/\s+/g,'_'):'練習メニュー')+'_'+(printMonthLbl||'')+'.pdf';
+    pdf.save(fname);
+    toast('PDFを作成しました');
+  }catch(e){
+    console.error(e); toast('PDFの作成に失敗しました');
+  }finally{
+    stage.remove();
+    if(btn){ btn.disabled=false; btn.textContent='🖨 印刷 / PDF保存'; }
   }
 };
 
