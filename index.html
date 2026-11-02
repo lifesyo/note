@@ -824,7 +824,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026110204';
+const APP_VER='2026110205';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1154,15 +1154,20 @@ window.doPrintMonth=async()=>{
   }
   const btn=$('#printMonthBtn');
   if(btn){ btn.disabled=true; btn.textContent='PDFを作成中…'; }
-  // 画面外に白背景の描画用ノードを作る（ダークモードの影響を受けないように）
+  // 白背景の描画用ノードを画面内（最前面）に一瞬置いて確実にレイアウト・描画させる
   const stage=document.createElement('div');
-  stage.style.cssText='position:fixed;left:-99999px;top:0;width:720px;background:#fff;color:#222;padding:20px;font-family:\'Hiragino Sans\',\'Yu Gothic\',sans-serif';
+  stage.style.cssText='position:fixed;left:0;top:0;z-index:99999;width:720px;background:#ffffff;color:#222;padding:20px;box-sizing:border-box;font-family:\'Hiragino Sans\',\'Yu Gothic\',sans-serif';
   stage.innerHTML=body.innerHTML;
   // プレビューの subtitle は var(--ink-soft) なので固定色へ
   stage.querySelectorAll('[style*="--ink-soft"]').forEach(el=>el.style.color='#666');
   document.body.appendChild(stage);
   try{
-    const canvas=await html2canvas(stage,{scale:2,backgroundColor:'#ffffff',useCORS:true});
+    // レイアウト確定を待つ（2フレーム）
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    const w=stage.offsetWidth, h=stage.scrollHeight;
+    const canvas=await html2canvas(stage,{scale:2,backgroundColor:'#ffffff',useCORS:true,
+      width:w,height:h,windowWidth:w,windowHeight:h,scrollX:0,scrollY:0,x:0,y:0});
+    if(!canvas.width || !canvas.height){ throw new Error('empty canvas'); }
     const pdf=new JsPDF('p','mm','a4');
     const pw=pdf.internal.pageSize.getWidth();   // 210
     const ph=pdf.internal.pageSize.getHeight();  // 297
