@@ -713,6 +713,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
   <div class="modal-inner" style="max-width:480px">
     <div class="modal-head"><span id="menuPickerTitle">登録メニューから選ぶ</span><button class="modal-x" onclick="closeMenuPicker()">×</button></div>
     <p class="hint" style="margin:0 0 10px">タップするとその日の練習に登録されます。</p>
+    <input type="search" id="menuPickerQuery" placeholder="🔍 メニュー名で検索" oninput="renderMenuPicker()" style="width:100%;margin-bottom:10px">
     <div id="menuPickerBody" style="max-height:60vh;overflow-y:auto"></div>
   </div>
 </div>
@@ -824,7 +825,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026110206';
+const APP_VER='2026110901';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1412,6 +1413,7 @@ window.openMenuPicker=(target)=>{
   menuPickerScrollY=window.scrollY; // fixed化される前に保存
   menuPickerTarget=target;
   menuPickerCat=null; // 開くたび先頭カテゴリから
+  const q=$('#menuPickerQuery'); if(q)q.value=''; // 検索欄をクリア
   $('#menuPickerTitle').textContent = target==='am' ? '朝練メニューから選ぶ' : '登録メニューから選ぶ';
   renderMenuPicker();
   $('#menuPickerModal').classList.add('open');
@@ -1429,6 +1431,24 @@ function renderMenuPicker(){
   const body=$('#menuPickerBody');
   const list=curMenuList();
   if(!list.length){ body.innerHTML='<div class="empty">登録メニューがありません。'+(menuPickerTarget==='am'?'朝練ページ下部':'練習記録の下部')+'で登録できます。</div>'; return; }
+  // 検索中はカテゴリ無視のフラット一覧で表示
+  const q=(($('#menuPickerQuery')&&$('#menuPickerQuery').value)||'').trim().toLowerCase();
+  if(q){
+    const hits=list.map((m,i)=>({m,i})).filter(({m})=>
+      (m.text||'').toLowerCase().includes(q) || (m.cats||[]).some(c=>(c||'').toLowerCase().includes(q)));
+    if(!hits.length){ body.innerHTML=`<div class="empty">「${esc(q)}」に一致するメニューはありません。</div>`; return; }
+    body.innerHTML=hits.map(({m,i})=>`
+      <div class="card pad" style="margin-bottom:6px" onclick="pickMenu(${i})">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+          <div style="flex:1">
+            <div style="white-space:pre-wrap">${esc(m.text)}</div>
+            ${(m.cats&&m.cats.length)?`<div class="tg" style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${m.cats.map(c=>`<span class="wt">${esc(c)}</span>`).join('')}</div>`:''}
+          </div>
+          <span style="color:var(--accent-ink);font-size:13px;white-space:nowrap">＋登録</span>
+        </div>
+      </div>`).join('');
+    return;
+  }
   // カテゴリ別にグループ化（複数カテゴリのメニューは各カテゴリに出す。カテゴリなしは「その他」）
   const groups={}; const NOCAT='その他';
   list.forEach((m,i)=>{
