@@ -825,7 +825,7 @@ let currentUser=null;
 let unsub=null;
 let seq=1;
 const $=s=>document.querySelector(s);
-const APP_VER='2026110901';
+const APP_VER='2026111101';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1456,23 +1456,28 @@ function renderMenuPicker(){
     cats.forEach(c=>{ (groups[c]=groups[c]||[]).push({m,i}); });
   });
   const order=[...practiceCats.filter(c=>groups[c]), ...Object.keys(groups).filter(c=>!practiceCats.includes(c)&&c!==NOCAT), ...(groups[NOCAT]?[NOCAT]:[])];
-  // 選択カテゴリの決定（未選択や存在しないカテゴリなら先頭）
-  if(!menuPickerCat || !groups[menuPickerCat]) menuPickerCat=order[0];
-  // カテゴリタブ
-  const tabs=`<div class="tags" style="position:sticky;top:0;background:var(--card);padding:2px 0 10px;z-index:2;margin-bottom:4px">${
+  // 選択カテゴリが存在しないものなら「すべて」(null)に戻す。デフォルトは「すべて」
+  if(menuPickerCat && !groups[menuPickerCat]) menuPickerCat=null;
+  // カテゴリタブ（先頭に「すべて」＝全メニュー表示。デフォルト選択）
+  const tabs=`<div class="tags" style="position:sticky;top:0;background:var(--card);padding:2px 0 10px;z-index:2;margin-bottom:4px">`+
+    `<span class="tag${menuPickerCat===null?' on':''}" onclick="setMenuPickerCat('')">すべて<span style="opacity:.6;margin-left:4px">${list.length}</span></span>`+
     order.map(c=>`<span class="tag${menuPickerCat===c?' on':''}" onclick="setMenuPickerCat('${c.replace(/'/g,"\\'")}')">${esc(c)}<span style="opacity:.6;margin-left:4px">${groups[c].length}</span></span>`).join('')
-  }</div>`;
-  // 選択カテゴリのメニュー一覧
-  const items=(groups[menuPickerCat]||[]).map(({m,i})=>`
+  +`</div>`;
+  // 選択カテゴリのメニュー一覧（「すべて」は全件を登録順で）
+  const shown = menuPickerCat===null ? list.map((m,i)=>({m,i})) : (groups[menuPickerCat]||[]);
+  const items=shown.map(({m,i})=>`
     <div class="card pad" style="margin-bottom:6px" onclick="pickMenu(${i})">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
-        <div style="flex:1;white-space:pre-wrap">${esc(m.text)}</div>
+        <div style="flex:1">
+          <div style="white-space:pre-wrap">${esc(m.text)}</div>
+          ${(menuPickerCat===null && m.cats&&m.cats.length)?`<div class="tg" style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${m.cats.map(c=>`<span class="wt">${esc(c)}</span>`).join('')}</div>`:''}
+        </div>
         <span style="color:var(--accent-ink);font-size:13px;white-space:nowrap">＋登録</span>
       </div>
     </div>`).join('');
   body.innerHTML=tabs+items;
 }
-window.setMenuPickerCat=(c)=>{ menuPickerCat=c; renderMenuPicker(); };
+window.setMenuPickerCat=(c)=>{ menuPickerCat=c||null; renderMenuPicker(); };
 window.pickMenu=(i)=>{
   const m=curMenuList()[i]; if(!m)return;
   if(menuPickerTarget==='am'){
