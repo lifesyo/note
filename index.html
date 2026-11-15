@@ -826,7 +826,7 @@ let unsub=null;
 let seq=1;
 let pendingSaves=0; // 自分の保存(setDoc)が飛行中の件数。スナップショット競合の防止に使用
 const $=s=>document.querySelector(s);
-const APP_VER='2026111503';
+const APP_VER='2026111504';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1466,10 +1466,11 @@ function renderMenuPicker(){
   // 状態: undefined=未選択（何も表示しない）/ null=すべて / 文字列=そのカテゴリ
   // 存在しないカテゴリが選ばれていたら未選択へ戻す
   if(typeof menuPickerCat==='string' && !groups[menuPickerCat]) menuPickerCat=undefined;
-  // カテゴリタブ（先頭に「すべて」。デフォルトは未選択なのでどれもonにしない）
-  const tabs=`<div class="tags" style="position:sticky;top:0;background:var(--card);padding:2px 0 10px;z-index:2;margin-bottom:4px">`+
-    `<span class="tag${menuPickerCat===null?' on':''}" onclick="setMenuPickerCat('__ALL__')">すべて<span style="opacity:.6;margin-left:4px">${list.length}</span></span>`+
-    order.map(c=>`<span class="tag${menuPickerCat===c?' on':''}" onclick="setMenuPickerCat('${c.replace(/'/g,"\\'")}')">${esc(c)}<span style="opacity:.6;margin-left:4px">${groups[c].length}</span></span>`).join('')
+  // カテゴリタブ（先頭に「すべて」。横1列でスクロール＝縦に積み上がって見にくくならないように）
+  const tabStyle='flex:0 0 auto;white-space:nowrap';
+  const tabs=`<div style="position:sticky;top:0;background:var(--card);padding:2px 0 10px;z-index:2;margin-bottom:4px;display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch">`+
+    `<span class="tag${menuPickerCat===null?' on':''}" style="${tabStyle}" onclick="setMenuPickerCat('__ALL__')">すべて<span style="opacity:.6;margin-left:4px">${list.length}</span></span>`+
+    order.map(c=>`<span class="tag${menuPickerCat===c?' on':''}" style="${tabStyle}" onclick="setMenuPickerCat('${c.replace(/'/g,"\\'")}')">${esc(c)}<span style="opacity:.6;margin-left:4px">${groups[c].length}</span></span>`).join('')
   +`</div>`;
   // 未選択なら案内だけ出してメニューは表示しない
   if(menuPickerCat===undefined){
