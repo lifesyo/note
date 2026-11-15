@@ -315,7 +315,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
     </div>
 
     <div id="vLinkSearch" style="display:none;margin-top:14px">
-      <input type="text" id="vLinkQuery" placeholder="🔍 タイトル・URL・メモで検索" autocomplete="off" oninput="renderViewer()" oncompositionend="renderViewer()" style="width:100%">
+      <input type="text" id="vLinkQuery" placeholder="🔍 タイトル・URL・メモで検索" autocomplete="off" style="width:100%">
     </div>
 
     <div class="daynav" id="vDayNav" style="margin-top:14px">
@@ -713,7 +713,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
   <div class="modal-inner" style="max-width:480px">
     <div class="modal-head"><span id="menuPickerTitle">登録メニューから選ぶ</span><button class="modal-x" onclick="closeMenuPicker()">×</button></div>
     <p class="hint" style="margin:0 0 10px">タップするとその日の練習に登録されます。</p>
-    <input type="text" id="menuPickerQuery" placeholder="🔍 メニュー名で検索" autocomplete="off" oninput="renderMenuPicker()" oncompositionend="renderMenuPicker()" style="width:100%;margin-bottom:10px">
+    <input type="text" id="menuPickerQuery" placeholder="🔍 メニュー名で検索" autocomplete="off" style="width:100%;margin-bottom:10px">
     <div id="menuPickerBody" style="max-height:60vh;overflow-y:auto"></div>
   </div>
 </div>
@@ -826,7 +826,7 @@ let unsub=null;
 let seq=1;
 let pendingSaves=0; // 自分の保存(setDoc)が飛行中の件数。スナップショット競合の防止に使用
 const $=s=>document.querySelector(s);
-const APP_VER='2026111502';
+const APP_VER='2026111503';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1419,7 +1419,7 @@ let menuPickerScrollY=0;
 window.openMenuPicker=(target)=>{
   menuPickerScrollY=window.scrollY; // fixed化される前に保存
   menuPickerTarget=target;
-  menuPickerCat=null; // 開くたび先頭カテゴリから
+  menuPickerCat=undefined; // 開いた直後は未選択（押すまで何も表示しない）
   const q=$('#menuPickerQuery'); if(q)q.value=''; // 検索欄をクリア
   $('#menuPickerTitle').textContent = target==='am' ? '朝練メニューから選ぶ' : '登録メニューから選ぶ';
   renderMenuPicker();
@@ -1433,7 +1433,7 @@ window.closeMenuPicker=()=>{
   requestAnimationFrame(()=>window.scrollTo(0,sy));
 };
 function curMenuList(){ return menuPickerTarget==='am' ? amMenuTemplates : menuTemplates; }
-let menuPickerCat=null; // 選択中カテゴリ
+let menuPickerCat=undefined; // 選択中カテゴリ: undefined=未選択 / null=すべて / 文字列=カテゴリ
 function renderMenuPicker(){
   const body=$('#menuPickerBody');
   const list=curMenuList();
@@ -1463,13 +1463,19 @@ function renderMenuPicker(){
     cats.forEach(c=>{ (groups[c]=groups[c]||[]).push({m,i}); });
   });
   const order=[...practiceCats.filter(c=>groups[c]), ...Object.keys(groups).filter(c=>!practiceCats.includes(c)&&c!==NOCAT), ...(groups[NOCAT]?[NOCAT]:[])];
-  // 選択カテゴリが存在しないものなら「すべて」(null)に戻す。デフォルトは「すべて」
-  if(menuPickerCat && !groups[menuPickerCat]) menuPickerCat=null;
-  // カテゴリタブ（先頭に「すべて」＝全メニュー表示。デフォルト選択）
+  // 状態: undefined=未選択（何も表示しない）/ null=すべて / 文字列=そのカテゴリ
+  // 存在しないカテゴリが選ばれていたら未選択へ戻す
+  if(typeof menuPickerCat==='string' && !groups[menuPickerCat]) menuPickerCat=undefined;
+  // カテゴリタブ（先頭に「すべて」。デフォルトは未選択なのでどれもonにしない）
   const tabs=`<div class="tags" style="position:sticky;top:0;background:var(--card);padding:2px 0 10px;z-index:2;margin-bottom:4px">`+
-    `<span class="tag${menuPickerCat===null?' on':''}" onclick="setMenuPickerCat('')">すべて<span style="opacity:.6;margin-left:4px">${list.length}</span></span>`+
+    `<span class="tag${menuPickerCat===null?' on':''}" onclick="setMenuPickerCat('__ALL__')">すべて<span style="opacity:.6;margin-left:4px">${list.length}</span></span>`+
     order.map(c=>`<span class="tag${menuPickerCat===c?' on':''}" onclick="setMenuPickerCat('${c.replace(/'/g,"\\'")}')">${esc(c)}<span style="opacity:.6;margin-left:4px">${groups[c].length}</span></span>`).join('')
   +`</div>`;
+  // 未選択なら案内だけ出してメニューは表示しない
+  if(menuPickerCat===undefined){
+    body.innerHTML=tabs+'<div class="empty" style="padding:24px">カテゴリを選ぶか、上の検索で絞り込んでください。</div>';
+    return;
+  }
   // 選択カテゴリのメニュー一覧（「すべて」は全件を登録順で）
   const shown = menuPickerCat===null ? list.map((m,i)=>({m,i})) : (groups[menuPickerCat]||[]);
   const items=shown.map(({m,i})=>`
@@ -1484,7 +1490,7 @@ function renderMenuPicker(){
     </div>`).join('');
   body.innerHTML=tabs+items;
 }
-window.setMenuPickerCat=(c)=>{ menuPickerCat=c||null; renderMenuPicker(); };
+window.setMenuPickerCat=(c)=>{ menuPickerCat = (c==='__ALL__') ? null : c; renderMenuPicker(); };
 window.pickMenu=(i)=>{
   const m=curMenuList()[i]; if(!m)return;
   if(menuPickerTarget==='am'){
@@ -2965,6 +2971,13 @@ window.commitImport=()=>{
 };
 
 window.addEventListener('pagehide',stopScan);
+/* 検索欄の確実なリアルタイム反映（インラインhandlerの保険としてJSでも束ねる） */
+(function bindSearchInputs(){
+  const mq=$('#menuPickerQuery');
+  if(mq){ ['input','compositionend','keyup','search','change'].forEach(ev=>mq.addEventListener(ev,()=>renderMenuPicker())); }
+  const vq=$('#vLinkQuery');
+  if(vq){ ['input','compositionend','keyup','search','change'].forEach(ev=>vq.addEventListener(ev,()=>{ if(typeof renderViewer==='function') renderViewer(); })); }
+})();
 </script>
 <script>
 /* PWA: Service Worker 登録 */
