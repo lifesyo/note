@@ -315,7 +315,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
     </div>
 
     <div id="vLinkSearch" style="display:none;margin-top:14px">
-      <input type="search" id="vLinkQuery" placeholder="🔍 タイトル・URL・メモで検索" oninput="renderViewer()" style="width:100%">
+      <input type="text" id="vLinkQuery" placeholder="🔍 タイトル・URL・メモで検索" autocomplete="off" oninput="renderViewer()" oncompositionupdate="renderViewer()" onkeyup="renderViewer()" style="width:100%">
     </div>
 
     <div class="daynav" id="vDayNav" style="margin-top:14px">
@@ -713,7 +713,7 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
   <div class="modal-inner" style="max-width:480px">
     <div class="modal-head"><span id="menuPickerTitle">登録メニューから選ぶ</span><button class="modal-x" onclick="closeMenuPicker()">×</button></div>
     <p class="hint" style="margin:0 0 10px">タップするとその日の練習に登録されます。</p>
-    <input type="search" id="menuPickerQuery" placeholder="🔍 メニュー名で検索" oninput="renderMenuPicker()" style="width:100%;margin-bottom:10px">
+    <input type="text" id="menuPickerQuery" placeholder="🔍 メニュー名で検索" autocomplete="off" oninput="renderMenuPicker()" oncompositionupdate="renderMenuPicker()" onkeyup="renderMenuPicker()" style="width:100%;margin-bottom:10px">
     <div id="menuPickerBody" style="max-height:60vh;overflow-y:auto"></div>
   </div>
 </div>
@@ -824,8 +824,9 @@ let pracLinks={}; // { 'YYYY-MM-DD': [{title,url}] } その日の練習に紐づ
 let currentUser=null;
 let unsub=null;
 let seq=1;
+let pendingSaves=0; // 自分の保存(setDoc)が飛行中の件数。スナップショット競合の防止に使用
 const $=s=>document.querySelector(s);
-const APP_VER='2026111101';
+const APP_VER='2026111501';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1234,6 +1235,10 @@ window.doPrintMonth=()=>{
 function subscribe(uid){
   setSync('syncing');
   unsub=onSnapshot(doc(db,'noteiq',uid),snap=>{
+    // ローカルの保存が未確定(ack待ち)の間に、サーバ確定スナップショットで
+    // 直前のタップ(出席など)を上書きしてしまう競合を防ぐ。
+    // hasPendingWrites=false（サーバ確定）かつ自分の保存が飛行中なら、このスナップショットは古い可能性があるのでスキップ。
+    if(snap.metadata && snap.metadata.hasPendingWrites===false && pendingSaves>0){ return; }
     if(snap.exists()){
       const d=snap.data();
       players=Array.isArray(d.players)?d.players:[];
@@ -1263,10 +1268,12 @@ function subscribe(uid){
 async function save(){
   if(!currentUser)return;
   setSync('syncing');
+  pendingSaves++;
   try{
     await setDoc(doc(db,'noteiq',currentUser.uid),{players,teamName,attendance,practices,amPractices,amAttendance,noteless,practiceCats,menuTemplates,amMenuTemplates,pracMemo,pracLinks,seq,updatedAt:new Date().toISOString()});
     setSync('synced');
   }catch(e){console.error(e);setSync('error');toast('⚠️ 保存に失敗しました');}
+  finally{ pendingSaves=Math.max(0,pendingSaves-1); }
 }
 /* 同じ日に「本文あり」と「空（提出のみ）」が両方ある場合、空の方を削除して1件にまとめる。
    受付チェックとノート取り込み/手入力が二重になったデータを掃除。戻り値=変更有無 */
