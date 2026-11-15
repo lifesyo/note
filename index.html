@@ -712,9 +712,10 @@ table.attend th.dcol{font-variant-numeric:tabular-nums}
 <div class="modal" id="menuPickerModal">
   <div class="modal-inner" style="max-width:480px">
     <div class="modal-head"><span id="menuPickerTitle">登録メニューから選ぶ</span><button class="modal-x" onclick="closeMenuPicker()">×</button></div>
-    <p class="hint" style="margin:0 0 10px">タップするとその日の練習に登録されます。</p>
+    <p class="hint" style="margin:0 0 10px">タップするとその日の練習に追加されます。続けて何個でも追加できます。</p>
     <input type="text" id="menuPickerQuery" placeholder="🔍 メニュー名で検索" autocomplete="off" style="width:100%;margin-bottom:10px">
-    <div id="menuPickerBody" style="max-height:60vh;overflow-y:auto"></div>
+    <div id="menuPickerBody" style="max-height:52vh;overflow-y:auto"></div>
+    <button class="btn primary" onclick="closeMenuPicker()" style="width:100%;margin-top:12px">完了</button>
   </div>
 </div>
 
@@ -826,7 +827,7 @@ let unsub=null;
 let seq=1;
 let pendingSaves=0; // 自分の保存(setDoc)が飛行中の件数。スナップショット競合の防止に使用
 const $=s=>document.querySelector(s);
-const APP_VER='2026111504';
+const APP_VER='2026111505';
 const todayStr=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 let recvSelDate=todayStr(); // 受付で選択中の提出日
 
@@ -1494,16 +1495,16 @@ function renderMenuPicker(){
 window.setMenuPickerCat=(c)=>{ menuPickerCat = (c==='__ALL__') ? null : c; renderMenuPicker(); };
 window.pickMenu=(i)=>{
   const m=curMenuList()[i]; if(!m)return;
+  // 登録してもピッカーは閉じず、続けて追加できるようにする（閉じるときは×）
   if(menuPickerTarget==='am'){
     if(!amPractices[amSelDate])amPractices[amSelDate]=[];
     amPractices[amSelDate].push({text:m.text,cats:(m.cats||[]).slice()});
-    save(); renderAmHist(); toast('朝練に登録しました');
+    save(); renderAmHist(); toast('朝練に追加しました（続けて追加できます）');
   }else{
     if(!practices[pracSelDate])practices[pracSelDate]=[];
     practices[pracSelDate].push({text:m.text,cats:(m.cats||[]).slice()});
-    save(); renderPrac(); toast('本日の練習に登録しました');
+    save(); renderPrac(); toast('練習に追加しました（続けて追加できます）');
   }
-  closeMenuPicker();
 };
 function menuListOf(kind){ return kind==='am' ? amMenuTemplates : menuTemplates; }
 function renderMenuTplList(kind){
